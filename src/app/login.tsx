@@ -3,22 +3,22 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { useAuth } from "../../context/AuthContext";
 
 const DEMO_ACCOUNTS = [
-  { identifier: "juan@email.com", password: "123456", role: "resident" },
-  { identifier: "kagawad@email.com", password: "123456", role: "official" },
+  { identifier: "lagdaan@email.com", password: "123456", role: "resident" },
+  { identifier: "pumar@email.com", password: "123456", role: "official" },
 ] as const;
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
