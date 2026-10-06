@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
+import { supabase } from "../../lib/supabase";
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const INK = "#3B2300";
@@ -12,15 +14,21 @@ const STATUS_STYLE: Record<string, { bg: string; text: string }> = {
   Ready: { bg: "#CDEFD3", text: "#14532D" },
 };
 
-const requests = [
-  { id: 1, ref: "BA-0231", type: "Barangay Clearance", date: "Oct 3, 2026", status: "Processing" },
-  { id: 2, ref: "BA-0198", type: "Certificate of Residency", date: "Sep 20, 2026", status: "Ready" },
-  { id: 3, ref: "BA-0152", type: "Certificate of Indigency", date: "Aug 28, 2026", status: "Ready" },
-  { id: 4, ref: "BA-0101", type: "Barangay ID", date: "Aug 2, 2026", status: "Ready" },
-];
+type RequestItem = {
+  id: string;
+  ref: string;
+  doc_type: string;
+  status: string;
+  created_at: string;
+};
 
-function RequestRow({ r }: any) {
-  const chip = STATUS_STYLE[r.status];
+function RequestRow({ r }: { r: RequestItem }) {
+  const chip = STATUS_STYLE[r.status] ?? STATUS_STYLE.Submitted;
+  const date = new Date(r.created_at).toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <View
@@ -52,10 +60,10 @@ function RequestRow({ r }: any) {
       {/* Title + reference */}
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ color: INK, fontSize: 14, fontFamily: "REM_BOLD" }}>
-          {r.type}
+          {r.doc_type}
         </Text>
         <Text style={{ color: "#6B4A1E", fontSize: 11, marginTop: 2, fontFamily: "REM_REGULAR" }}>
-          {r.ref} · {r.date}
+          {r.ref} · {date}
         </Text>
       </View>
 
@@ -69,6 +77,29 @@ function RequestRow({ r }: any) {
 
 export default function Requests() {
   const router = useRouter();
+  const [requests, setRequests] = useState<RequestItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [errorMsg, setErrorMsg] = useState("");
+
+  const loadRequests = useCallback(function () {
+    async function load() {
+      const { data, error } = await supabase
+        .from("document_requests")
+        .select("id, ref, doc_type, status, created_at")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        setErrorMsg(error.message);
+      } else {
+        setErrorMsg("");
+        setRequests(data ?? []);
+      }
+      setLoading(false);
+    }
+    load();
+  }, []);
+
+  useFocusEffect(loadRequests);
 
   return (
     <ScrollView
@@ -120,7 +151,11 @@ export default function Requests() {
 
       {/* List */}
       <View style={{ paddingHorizontal: 20, paddingTop: 20, gap: 12 }}>
-        {requests.length === 0 ? (
+        {loading ? (
+          <Text style={{ color: INK, textAlign: "center", fontFamily: "REM_REGULAR" }}>Loading...</Text>
+        ) : errorMsg ? (
+          <Text style={{ color: "#B91C1C", textAlign: "center", fontFamily: "REM_REGULAR" }}>{errorMsg}</Text>
+        ) : requests.length === 0 ? (
           <View style={{ alignItems: "center", paddingVertical: 40 }}>
             <Ionicons name="document-text-outline" size={48} color="#8A6A3A" />
             <Text style={{ color: INK, marginTop: 8, fontFamily: "REM_BOLD" }}>No requests yet</Text>

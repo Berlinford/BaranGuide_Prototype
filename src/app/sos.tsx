@@ -21,7 +21,7 @@ const MUTED = "#6B4A1E";
 const PLACEHOLDER = "#A88B5C";
 const RED = "#D92D20";
 const HOLD_MS = 1500; // how long to hold the button
-const COUNTDOWN = 5; // seconds to cancel before the alert is sent
+const COUNTDOWN = 3; // seconds to cancel before the alert is sent
 
 // TODO: replace with your barangay's real numbers
 const HOTLINES = [

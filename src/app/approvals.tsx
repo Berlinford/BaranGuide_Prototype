@@ -1,161 +1,118 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { Alert, Image, Text, View } from "react-native";
-import {
-    ActionButton,
-    Card,
-    EmptyState,
-    FilterTabs,
-    GOLD,
-    InfoRow,
-    initialsOf,
-    INK,
-    MUTED,
-    Page,
-    Sheet,
-} from "../../components/ui";
+import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, Image, Pressable, ScrollView, Text, View } from "react-native";
+import { supabase } from "../../lib/supabase";
 
-type Account = {
-  id: number;
-  name: string;
-  role: "resident" | "official";
-  contact: string;
-  email: string;
-  address?: string;
-  position?: string;
-  officialId?: string;
-  submitted: string;
-  idPhoto?: string; // uri of the uploaded ID
+const ORANGE = ["#FFD966", "#FF9A4D"] as const;
+const INK = "#3B2300";
+const MUTED = "#6B4A1E";
+
+type Pending = {
+  id: string; full_name: string | null; contact: string | null; email: string | null;
+  birthdate: string | null; address: string | null; purok: string | null;
 };
 
-const TABS = ["Residents", "Officials"] as const;
-type Tab = (typeof TABS)[number];
-
-// Android shows at most 3 alert buttons, so: 2 reasons + Cancel
-const REASONS = ["ID doesn't match details", "Not a resident"];
-
-// TODO: use the logged-in official's real position
-const MY_POSITION = "Kagawad";
-// Only the Punong Barangay may approve other officials. Enforce this on the server too.
-const CAN_APPROVE_OFFICIALS = MY_POSITION === "Kagawad" || MY_POSITION === "Punong Barangay";
-
-// TODO: replace with pending accounts from your backend
-const INITIAL: Account[] = [
-  { id: 1, name: "Rosa Lim", role: "resident", contact: "09171234567", email: "rosa@email.com", address: "45 Luna St., Purok 2", submitted: "Today" },
-  { id: 2, name: "Carlo Bautista", role: "resident", contact: "09181234567", email: "carlo@email.com", address: "12 Mabini St., Purok 3", submitted: "Yesterday" },
-  { id: 3, name: "Elena Torres", role: "resident", contact: "09191234567", email: "elena@email.com", address: "88 Rizal Ave., Purok 1", submitted: "Oct 1" },
-  { id: 4, name: "Ramon Villanueva", role: "official", contact: "09201234567", email: "ramon@email.com", position: "Tanod", officialId: "BRGY-OFF-0031", submitted: "Today" },
-];
-
 export default function Approvals() {
-  const [items, setItems] = useState<Account[]>(INITIAL);
-  const [tab, setTab] = useState<Tab>("Residents");
-  const [viewId, setViewId] = useState<number | null>(null);
+  const router = useRouter();
+  const [items, setItems] = useState<Pending[]>([]);
+  const [photos, setPhotos] = useState<Record<string, string>>({});
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const role = tab === "Residents" ? "resident" : "official";
-  const shown = items.filter((i) => i.role === role);
-  const counts: Record<Tab, number> = {
-    Residents: items.filter((i) => i.role === "resident").length,
-    Officials: items.filter((i) => i.role === "official").length,
+  const load = useCallback(async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id,full_name,contact,email,birthdate,address,purok")
+      .eq("status", "pending")
+      .eq("requested_role", "resident")
+      .order("created_at", { ascending: true });
+    if (error) {
+      Alert.alert("Couldn't load", error.message);
+      setLoading(false);
+      return;
+    }
+    setItems(data ?? []);
+    setLoading(false);
+
+    // signed links so officials can view each ID (valid for 10 minutes)
+    const urls: Record<string, string> = {};
+    for (const p of data ?? []) {
+      const { data: s } = await supabase.storage.from("ids").createSignedUrl(`${p.id}/id.jpg`, 600);
+      if (s?.signedUrl) urls[p.id] = s.signedUrl;
+    }
+    setPhotos(urls);
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const review = (p: Pending, decision: "approved" | "rejected") => {
+    Alert.alert(
+      decision === "approved" ? "Approve resident?" : "Reject resident?",
+      p.full_name ?? "",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: decision === "approved" ? "Approve" : "Reject",
+          style: decision === "approved" ? "default" : "destructive",
+          onPress: async () => {
+            setBusy(p.id);
+            const { error } = await supabase.rpc("review_resident", { target: p.id, decision });
+            setBusy(null);
+            if (error) return Alert.alert("Failed", error.message);
+            setItems((list) => list.filter((x) => x.id !== p.id));
+          },
+        },
+      ]
+    );
   };
-  const viewing = items.find((i) => i.id === viewId) ?? null;
-  const blocked = tab === "Officials" && !CAN_APPROVE_OFFICIALS;
-
-  const remove = (id: number) => setItems((l) => l.filter((i) => i.id !== id));
-
-  const approve = (a: Account) =>
-    Alert.alert("Approve account?", `${a.name} will be able to log in.`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Approve",
-        onPress: () => {
-          // TODO: tell your backend to activate this account
-          remove(a.id);
-          setViewId(null);
-        },
-      },
-    ]);
-
-  const reject = (a: Account) =>
-    Alert.alert("Reject account", "Choose a reason. The person will be told.", [
-      ...REASONS.map((reason) => ({
-        text: reason,
-        onPress: () => {
-          // TODO: tell your backend to reject with `reason`
-          remove(a.id);
-          setViewId(null);
-        },
-      })),
-      { text: "Cancel", style: "cancel" as const },
-    ]);
 
   return (
-    <Page title="Account Approvals" variant="official">
-      <FilterTabs options={TABS} value={tab} onChange={setTab} counts={counts} />
-
-      {blocked && (
-        <View style={{ flexDirection: "row", gap: 8, backgroundColor: "#FFD9A8", borderRadius: 20, padding: 12, alignItems: "center" }}>
-          <Ionicons name="lock-closed-outline" size={20} color="#7A3E00" />
-          <Text style={{ flex: 1, color: "#7A3E00", fontSize: 12, fontFamily: "REM_REGULAR" }}>
-            Only the Punong Barangay can approve official accounts. You can review them here, but not approve or reject.
-          </Text>
+    <ScrollView style={{ flex: 1, backgroundColor: "#FFF1C7" }} contentContainerStyle={{ paddingBottom: 130 }}>
+      <LinearGradient colors={ORANGE} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+        style={{ paddingTop: 48, paddingHorizontal: 16, paddingBottom: 20, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 }}>
+        <View style={{ flexDirection: "row", alignItems: "center" }}>
+          <Pressable onPress={() => router.navigate("/official-home" as any)} hitSlop={12} style={{ marginRight: 12 }}>
+            <Ionicons name="chevron-back" size={28} color={INK} />
+          </Pressable>
+          <Text style={{ color: INK, fontSize: 20, fontFamily: "REM_BOLD" }}>Resident approvals</Text>
         </View>
-      )}
+      </LinearGradient>
 
-      {shown.length === 0 ? (
-        <EmptyState icon="people-outline" title="Nothing waiting for approval" sub="New sign-ups will appear here." />
-      ) : (
-        shown.map((a) => (
-          <Card key={a.id} style={{ gap: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-              <View style={{ width: 46, height: 46, borderRadius: 23, backgroundColor: INK, alignItems: "center", justifyContent: "center" }}>
-                <Text style={{ color: GOLD, fontSize: 16, fontFamily: "REM_BOLD" }}>{initialsOf(a.name)}</Text>
+      <View style={{ padding: 20, gap: 14 }}>
+        {loading ? (
+          <ActivityIndicator color={INK} />
+        ) : items.length === 0 ? (
+          <Text style={{ color: MUTED, textAlign: "center", fontFamily: "REM_REGULAR" }}>No pending registrations.</Text>
+        ) : (
+          items.map((p) => (
+            <View key={p.id} style={{ backgroundColor: "#fff", borderRadius: 24, padding: 14, gap: 6 }}>
+              <Text style={{ color: INK, fontSize: 16, fontFamily: "REM_BOLD" }}>{p.full_name}</Text>
+              <Text style={{ color: MUTED, fontSize: 12, fontFamily: "REM_REGULAR" }}>
+                {p.contact} · {p.email}
+              </Text>
+              <Text style={{ color: MUTED, fontSize: 12, fontFamily: "REM_REGULAR" }}>
+                {p.birthdate} · {p.address}, {p.purok}
+              </Text>
+              {photos[p.id] ? (
+                <Image source={{ uri: photos[p.id] }} style={{ width: "100%", height: 180, borderRadius: 16, marginTop: 6 }} resizeMode="contain" />
+              ) : null}
+              <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+                <Pressable disabled={busy === p.id} onPress={() => review(p, "rejected")}
+                  style={{ flex: 1, backgroundColor: "#FDE2E0", borderRadius: 24, paddingVertical: 12, alignItems: "center" }}>
+                  <Text style={{ color: "#D92D20", fontFamily: "REM_BOLD" }}>Reject</Text>
+                </Pressable>
+                <Pressable disabled={busy === p.id} onPress={() => review(p, "approved")}
+                  style={{ flex: 1, backgroundColor: "#CDEFD3", borderRadius: 24, paddingVertical: 12, alignItems: "center" }}>
+                  <Text style={{ color: "#14532D", fontFamily: "REM_BOLD" }}>Approve</Text>
+                </Pressable>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: INK, fontSize: 15, fontFamily: "REM_BOLD" }}>{a.name}</Text>
-                <Text style={{ color: MUTED, fontSize: 11, fontFamily: "REM_REGULAR" }}>
-                  {a.role === "official" ? `${a.position} · ${a.officialId}` : a.address}
-                </Text>
-              </View>
-              <Text style={{ color: MUTED, fontSize: 11, fontFamily: "REM_REGULAR" }}>{a.submitted}</Text>
             </View>
-
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
-              <ActionButton label="View ID" icon="id-card-outline" tone="ghost" onPress={() => setViewId(a.id)} />
-              <ActionButton label="Approve" icon="checkmark-outline" tone="success" disabled={blocked} onPress={() => approve(a)} />
-              <ActionButton label="Reject" icon="close-outline" tone="danger" disabled={blocked} onPress={() => reject(a)} />
-            </View>
-          </Card>
-        ))
-      )}
-
-      <Sheet visible={!!viewing} onClose={() => setViewId(null)} title={viewing?.name ?? ""}>
-        {viewing && (
-          <>
-            {viewing.idPhoto ? (
-              <Image source={{ uri: viewing.idPhoto }} style={{ width: "100%", height: 200, borderRadius: 20 }} resizeMode="contain" />
-            ) : (
-              <View style={{ height: 160, borderRadius: 20, borderWidth: 2, borderStyle: "dashed", borderColor: "#C9A870", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                <Ionicons name="image-outline" size={36} color="#8A6A3A" />
-                <Text style={{ color: MUTED, fontSize: 12, fontFamily: "REM_REGULAR" }}>Uploaded ID photo shows here</Text>
-              </View>
-            )}
-            <InfoRow icon="call-outline" label="Contact" value={viewing.contact} />
-            <InfoRow icon="mail-outline" label="Email" value={viewing.email} />
-            {viewing.role === "resident" ? (
-              <InfoRow icon="home-outline" label="Address" value={viewing.address ?? ""} />
-            ) : (
-              <>
-                <InfoRow icon="briefcase-outline" label="Position" value={viewing.position ?? ""} />
-                <InfoRow icon="id-card-outline" label="Official ID" value={viewing.officialId ?? ""} />
-              </>
-            )}
-            <Text style={{ color: MUTED, fontSize: 11, fontFamily: "REM_REGULAR" }}>
-              Compare the name and address on the ID with the details above before approving.
-            </Text>
-          </>
+          ))
         )}
-      </Sheet>
-    </Page>
+      </View>
+    </ScrollView>
   );
 }

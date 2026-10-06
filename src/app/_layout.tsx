@@ -5,11 +5,12 @@ import { Tabs, useRouter } from "expo-router";
 import { ComponentProps, useEffect } from "react";
 import { ColorValue, StyleSheet } from "react-native";
 import { AuthProvider, useAuth } from "../../context/AuthContext";
+import { startSync } from "../../lib/offline";
+
 import "./global.css";
 
 type IoniconsName = ComponentProps<typeof Ionicons>["name"];
 
-// Fixed TypeScript signature for tabBarIcon helper
 const icon =
   (name: IoniconsName) =>
   ({ color }: { focused: boolean; color: ColorValue; size: number }) =>
@@ -30,6 +31,9 @@ function RootNavigator() {
   const router = useRouter();
   const { token, role, loading } = useAuth();
 
+  // sends any queued offline submissions when internet returns
+  useEffect(() => startSync(), []);
+
   const [fontsLoaded] = useFonts({
     REM_BOLD: require("@/assets/fonts/rem_bold.ttf"),
     REM_REGULAR: require("@/assets/fonts/rem_regular.ttf"),
@@ -44,11 +48,10 @@ function RootNavigator() {
     if (!fontsLoaded || loading) return;
     if (isOfficial) router.replace("/official-home" as any);
     else if (isResident) router.replace("/" as any);
+    else router.replace("/login" as any);
   }, [isOfficial, isResident, fontsLoaded, loading]);
 
-  if (!fontsLoaded || loading) {
-    return null;
-  }
+  if (!fontsLoaded || loading) return null;
 
   return (
     <Tabs
@@ -79,18 +82,9 @@ function RootNavigator() {
     >
       {/* ---------- RESIDENT only ---------- */}
       <Tabs.Protected guard={isResident}>
-        <Tabs.Screen
-          name="index"
-          options={{ title: "Home", tabBarIcon: icon("home-outline") }}
-        />
-        <Tabs.Screen
-          name="requests"
-          options={{ title: "Requests", tabBarIcon: icon("document-text-outline") }}
-        />
-        <Tabs.Screen
-          name="reports"
-          options={{ title: "Reports", tabBarIcon: icon("megaphone-outline") }}
-        />
+        <Tabs.Screen name="index" options={{ title: "Home", tabBarIcon: icon("home-outline") }} />
+        <Tabs.Screen name="requests" options={{ title: "Requests", tabBarIcon: icon("document-text-outline") }} />
+        <Tabs.Screen name="reports" options={{ title: "Reports", tabBarIcon: icon("megaphone-outline") }} />
         <Tabs.Screen name="report-incident" options={{ href: null }} />
         <Tabs.Screen name="sos" options={{ href: null }} />
         <Tabs.Screen name="document-request" options={{ href: null }} />
@@ -101,22 +95,10 @@ function RootNavigator() {
 
       {/* ---------- OFFICIAL only ---------- */}
       <Tabs.Protected guard={isOfficial}>
-        <Tabs.Screen
-          name="official-home"
-          options={{ title: "Home", tabBarIcon: icon("grid-outline") }}
-        />
-        <Tabs.Screen
-          name="official-requests"
-          options={{ title: "Requests", tabBarIcon: icon("document-text-outline") }}
-        />
-        <Tabs.Screen
-          name="official-reports"
-          options={{ title: "Reports", tabBarIcon: icon("clipboard-outline") }}
-        />
-        <Tabs.Screen
-          name="sos-alerts"
-          options={{ title: "SOS", tabBarIcon: icon("warning-outline") }}
-        />
+        <Tabs.Screen name="official-home" options={{ title: "Home", tabBarIcon: icon("grid-outline") }} />
+        <Tabs.Screen name="official-requests" options={{ title: "Requests", tabBarIcon: icon("document-text-outline") }} />
+        <Tabs.Screen name="official-reports" options={{ title: "Reports", tabBarIcon: icon("clipboard-outline") }} />
+        <Tabs.Screen name="sos-alerts" options={{ title: "SOS", tabBarIcon: icon("warning-outline") }} />
         <Tabs.Screen name="approvals" options={{ href: null }} />
         <Tabs.Screen name="announcements-manage" options={{ href: null }} />
         <Tabs.Screen name="residents" options={{ href: null }} />
@@ -124,10 +106,7 @@ function RootNavigator() {
 
       {/* ---------- BOTH roles ---------- */}
       <Tabs.Protected guard={loggedIn}>
-        <Tabs.Screen
-          name="profile"
-          options={{ title: "Profile", tabBarIcon: icon("person-circle-outline") }}
-        />
+        <Tabs.Screen name="profile" options={{ title: "Profile", tabBarIcon: icon("person-circle-outline") }} />
         <Tabs.Screen
           name="settings"
           options={{

@@ -3,8 +3,12 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const RED = ["#7F1D1D", "#DC2626"] as const;
+
+const R = { fontFamily: "REM_REGULAR" } as const;
+const B = { fontFamily: "REM_BOLD" } as const;
 
 const announcements = [
   { id: 1, title: "Water interruption this Sunday", date: "Posted today" },
@@ -32,12 +36,12 @@ function EventCard({ e }: any) {
   return (
     <View className="bg-white rounded-3xl px-4 py-3 flex-row items-center" style={{ gap: 12 }}>
       <View className="bg-amber-400 rounded-xl w-12 py-1 items-center">
-        <Text className="text-ink text-xs">{e.month}</Text>
-        <Text className="text-ink font-bold text-lg">{e.day}</Text>
+        <Text className="text-ink text-xs" style={R}>{e.month}</Text>
+        <Text className="text-ink text-lg" style={B}>{e.day}</Text>
       </View>
       <View>
-        <Text className="text-ink font-semibold">{e.title}</Text>
-        <Text className="text-ink text-xs">{e.time}</Text>
+        <Text className="text-ink" style={B}>{e.title}</Text>
+        <Text className="text-ink text-xs" style={R}>{e.time}</Text>
       </View>
     </View>
   );
@@ -80,23 +84,23 @@ export default function Home() {
           }}
         >
           <View className="flex-row justify-between items-center">
-            <Text className="text-ink">Welcome</Text>
+            <Text className="text-ink" style={R}>Welcome</Text>
           </View>
 
           <View className="flex-row justify-between items-center" style={{ paddingRight: 20 }}>
-            <Text className="text-ink text-2xl font-bold">First Name!</Text>
+            <Text className="text-ink text-2xl" style={B}>Kian Lagdaan!</Text>
             <View className="flex-row items-center" style={{ gap: 12 }}>
               <Ionicons name="notifications" size={24} color="#3B2300" />
               <Pressable
                 onPress={() => router.navigate("/profile")}
                 className="bg-orange-700 w-9 h-9 rounded-full items-center justify-center"
               >
-                <Text className="text-white font-bold">FN</Text>
+                <Text className="text-white" style={B}>FN</Text>
               </Pressable>
             </View>
           </View>
 
-          <Text className="text-ink text-xs">Barangay Bagong Anyo, Liliw, Laguna</Text>
+          <Text className="text-ink text-xs" style={R}>Barangay Bagong Anyo, Liliw, Laguna</Text>
         </Gradient>
       </View>
 
@@ -105,13 +109,13 @@ export default function Home() {
           <Pressable className="flex-1" onPress={() => router.push("/document-request")}>
             <Gradient style={{ borderRadius: 16, padding: 16, minHeight: 90, justifyContent: "flex-end" }}>
               <Ionicons name="document-text-outline" size={24} color="#3B2300" />
-              <Text className="text-ink font-semibold mt-1">Document Request</Text>
+              <Text className="text-ink mt-1" style={B}>Document Request</Text>
             </Gradient>
           </Pressable>
           <Pressable className="flex-1" onPress={() => router.push("/report-incident")}>
             <Gradient style={{ borderRadius: 16, padding: 16, minHeight: 90, justifyContent: "flex-end" }}>
               <Ionicons name="megaphone-outline" size={24} color="#3B2300" />
-              <Text className="text-ink font-semibold mt-1">Report Incident</Text>
+              <Text className="text-ink mt-1" style={B}>Report Incident</Text>
             </Gradient>
           </Pressable>
         </View>
@@ -127,29 +131,30 @@ export default function Home() {
               flexDirection: "row",
               alignItems: "center",
               gap: 12,
-            }}>
-          <Ionicons name="warning" size={28} color="white" />
+            }}
+          >
+            <Ionicons name="warning" size={28} color="white" />
             <View>
-              <Text className="text-white font-bold text-lg">Emergency SOS</Text>
-              <Text className="text-white text-xs">Hold 3 seconds to send</Text>
+              <Text className="text-white text-lg" style={B}>Emergency SOS</Text>
+              <Text className="text-white text-xs" style={R}>Hold 3 seconds to send</Text>
             </View>
           </LinearGradient>
         </Pressable>
 
         <Pressable onPress={() => router.navigate("/requests")}>
-        <Gradient style={{ borderRadius: 16, padding: 16 }}>
-          <View className="flex-row justify-between">
-            <Text className="text-ink font-bold">Your Active Request</Text>
-            <Text className="text-ink text-xs">Processing</Text>
-          </View>
-          <Text className="text-ink mt-1">Barangay Clearance</Text>
-          <View className="bg-white/50 h-2 rounded-full mt-3">
-            <View className="bg-orange-700 h-2 rounded-full" style={{ width: "66%" }} />
-          </View>
-        </Gradient>
+          <Gradient style={{ borderRadius: 16, padding: 16 }}>
+            <View className="flex-row justify-between">
+              <Text className="text-ink" style={B}>Your Active Request</Text>
+              <Text className="text-ink text-xs" style={R}>Processing</Text>
+            </View>
+            <Text className="text-ink mt-1" style={R}>Barangay Clearance</Text>
+            <View className="bg-white/50 h-2 rounded-full mt-3">
+              <View className="bg-orange-700 h-2 rounded-full" style={{ width: "66%" }} />
+            </View>
+          </Gradient>
         </Pressable>
 
-        <Text className="text-ink font-bold text-base mt-2" style={{ paddingBottom: 4 }}>Announcements</Text>
+        <Text className="text-ink text-base mt-2" style={[B, { paddingBottom: 4 }]}>Announcements</Text>
       </View>
 
       <Modal
@@ -170,7 +175,7 @@ export default function Home() {
               <Pressable onPress={() => setShowEvents(false)} style={{ width: 40 }}>
                 <Ionicons name="chevron-back" size={28} color="#3B2300" />
               </Pressable>
-              <Text className="text-ink text-lg font-semibold flex-1 text-center">Upcoming Events</Text>
+              <Text className="text-ink text-lg flex-1 text-center" style={B}>Upcoming Events</Text>
               <View style={{ width: 40 }} />
             </View>
 
@@ -186,16 +191,19 @@ export default function Home() {
         </View>
       </Modal>
 
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+      >
         {announcements.map((a) => (
           <View key={a.id} className="bg-white rounded-2xl overflow-hidden" style={{ width: 240 }}>
             <View className="bg-orange-200 h-28 items-center justify-center">
               <Ionicons name="image-outline" size={32} color="#B45309" />
             </View>
             <View className="p-3">
-              <Text className="text-ink font-semibold">{a.title}</Text>
-              <Text className="text-ink text-xs mt-1">{a.date}</Text>
+              <Text className="text-ink" style={B}>{a.title}</Text>
+              <Text className="text-ink text-xs mt-1" style={R}>{a.date}</Text>
             </View>
           </View>
         ))}
@@ -203,9 +211,9 @@ export default function Home() {
 
       <View className="px-4 mt-4" style={{ gap: 8 }}>
         <View className="flex-row justify-between items-center">
-          <Text className="text-ink font-bold text-base">Upcoming Events</Text>
+          <Text className="text-ink text-base" style={B}>Upcoming Events</Text>
           <Pressable onPress={() => setShowEvents(true)}>
-            <Text className="text-orange-700 font-semibold text-sm">See all</Text>
+            <Text className="text-orange-700 text-sm" style={B}>See all</Text>
           </Pressable>
         </View>
 

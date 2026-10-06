@@ -5,7 +5,7 @@ import { Pressable, ScrollView, Text, View } from "react-native";
 import { CREAM, DARK, GOLD, IconName, INK, MUTED, RED } from "../../components/ui";
 
 // TODO: replace everything below with data from your backend
-const OFFICIAL = { name: "Juan Dela Cruz", position: "Kagawad" };
+const OFFICIAL = { name: "Christine Pumar", position: "Kagawad" };
 const UNREAD = 4;
 
 const SOS_ALERTS = [

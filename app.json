@@ -12,9 +12,14 @@
     "scheme": "baranguidetestv1",
     "userInterfaceStyle": "dark",
     "ios": {
-      "icon": "./assets/BaranGuideIcon.png"
+      "bundleIdentifier": "com.lafirma.baranguide",
+      "icon": "./assets/BaranGuideIcon.png",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.lafirma.baranguide",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/BaranGuideIcon.png",
@@ -39,6 +44,12 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "bd3af25e-3468-481c-a036-59a23a16abe6"
+      }
     }
   }
 }

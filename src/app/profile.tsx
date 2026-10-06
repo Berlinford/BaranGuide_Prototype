@@ -2,8 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Image, Pressable, ScrollView, Switch, Text, TextInput, View } from "react-native";
+import { useAuth } from "../../context/AuthContext";
+import { supabase } from "../../lib/supabase";
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const INK = "#3B2300";
@@ -11,29 +13,46 @@ const MUTED = "#6B4A1E";
 const PLACEHOLDER = "#A88B5C";
 
 // TODO: replace with data from your backend / auth
-const INITIAL = {
+const EMPTY = {
   photo: null as string | null,
-  fullName: "Juan Dela Cruz",
-  residentId: "BRGY-2026-0142",
-  birthdate: "Jan 15, 1995",
-  sex: "Male",
-  civilStatus: "Single",
-  contact: "09123456789",
-  email: "juan@email.com",
-  address: "123 Mabini St.",
-  purok: "Purok 3",
-  emergencyName: "Maria Dela Cruz",
-  emergencyRelation: "Mother",
-  emergencyContact: "09987654321",
+  fullName: "",
+  idNumber: "",
+  birthdate: "",
+  sex: "",
+  civilStatus: "",
+  contact: "",
+  email: "",
+  address: "",
+  purok: "",
+  emergencyName: "",
+  emergencyRelation: "",
+  emergencyContact: "",
 };
 
-type Profile = typeof INITIAL;
+type Profile = typeof EMPTY;
+
+const fromRow = (r: any): Profile => ({
+  photo: null,
+  fullName: r.full_name ?? "",
+  idNumber: r.id_number ?? "",
+  birthdate: r.birthdate ?? "",
+  sex: r.sex ?? "",
+  civilStatus: r.civil_status ?? "",
+  contact: r.contact ?? "",
+  email: r.email ?? "",
+  address: r.address ?? "",
+  purok: r.purok ?? "",
+  emergencyName: r.emergency_name ?? "",
+  emergencyRelation: r.emergency_relation ?? "",
+  emergencyContact: r.emergency_contact ?? "",
+});
 
 type FieldDef = {
   key: keyof Profile;
   label: string;
   icon: keyof typeof Ionicons.glyphMap;
   keyboard?: "default" | "phone-pad" | "email-address";
+  readOnly?: boolean;
 };
 
 const PERSONAL: FieldDef[] = [
@@ -42,8 +61,7 @@ const PERSONAL: FieldDef[] = [
   { key: "sex", label: "Sex", icon: "male-female-outline" },
   { key: "civilStatus", label: "Civil status", icon: "heart-outline" },
   { key: "contact", label: "Contact number", icon: "call-outline", keyboard: "phone-pad" },
-  { key: "email", label: "Email", icon: "mail-outline", keyboard: "email-address" },
-];
+  { key: "email", label: "Email", icon: "mail-outline", keyboard: "email-address", readOnly: true },];
 
 const ADDRESS: FieldDef[] = [
   { key: "address", label: "Street / House no.", icon: "home-outline" },
@@ -169,14 +187,26 @@ function SettingRow({
 
 export default function ProfileScreen() {
   const router = useRouter();
+const { role, userId, signOut } = useAuth();
 
-  const [profile, setProfile] = useState<Profile>(INITIAL);
-  const [draft, setDraft] = useState<Profile>(INITIAL);
+  const [profile, setProfile] = useState<Profile>(EMPTY);
+  const [draft, setDraft] = useState<Profile>(EMPTY);
   const [editing, setEditing] = useState(false);
   const [notifications, setNotifications] = useState(true);
 
   const data = editing ? draft : profile;
   const set = (key: keyof Profile) => (t: string) => setDraft((d) => ({ ...d, [key]: t }));
+
+  useEffect(() => {
+    if (!userId) return;
+    (async () => {
+      const { data, error } = await supabase.from("profiles").select("*").eq("id", userId).single();
+      if (error) return console.log("Profile load error:", error);
+      const p = fromRow(data);
+      setProfile(p);
+      setDraft(p);
+    })();
+  }, [userId]);
 
   const startEdit = () => {
     setDraft(profile);
@@ -188,11 +218,27 @@ export default function ProfileScreen() {
     setEditing(false);
   };
 
-  const save = () => {
+  const save = async () => {
     if (!draft.fullName.trim()) return Alert.alert("Missing info", "Full name can't be empty.");
     if (!draft.contact.trim()) return Alert.alert("Missing info", "Enter your contact number.");
 
-    // TODO: send `draft` to your backend
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        full_name: draft.fullName.trim(),
+        contact: draft.contact.trim(),
+        birthdate: draft.birthdate,
+        sex: draft.sex,
+        civil_status: draft.civilStatus,
+        address: draft.address,
+        purok: draft.purok,
+        emergency_name: draft.emergencyName,
+        emergency_relation: draft.emergencyRelation,
+        emergency_contact: draft.emergencyContact,
+      })
+      .eq("id", userId!);
+
+    if (error) return Alert.alert("Couldn't save", error.message);
     setProfile(draft);
     setEditing(false);
   };
@@ -290,7 +336,11 @@ export default function ProfileScreen() {
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Pressable onPress={() => router.navigate("/")} hitSlop={12} style={{ marginRight: 12 }}>
+            <Pressable
+              onPress={() => router.navigate((role === "official" ? "/official-home" : "/") as any)}
+              hitSlop={12}
+              style={{ marginRight: 12 }}
+            >
               <Ionicons name="chevron-back" size={28} color={INK} />
             </Pressable>
             <Text style={{ flex: 1, color: INK, fontSize: 20, fontFamily: "REM_BOLD" }}>Profile</Text>
@@ -348,7 +398,7 @@ export default function ProfileScreen() {
 
           <Text style={{ color: INK, fontSize: 20, fontFamily: "REM_BOLD", marginTop: 4 }}>{data.fullName || "Your name"}</Text>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text style={{ color: MUTED, fontSize: 12, fontFamily: "REM_REGULAR" }}>{profile.residentId}</Text>
+            <Text style={{ color: MUTED, fontSize: 12, fontFamily: "REM_REGULAR" }}>{profile.idNumber || "ID pending"}</Text>
             <View
               style={{
                 flexDirection: "row",
@@ -411,14 +461,17 @@ export default function ProfileScreen() {
               <SettingRow
                 icon="lock-closed-outline"
                 label="Change password"
-                onPress={() => Alert.alert("Coming soon", "Hook this up to your change password screen.")}
+                onPress={() => Alert.alert("Sir, di pa po tapos")}
               />
               <SettingRow
                 icon="help-circle-outline"
                 label="Help & support"
-                onPress={() => Alert.alert("Coming soon", "Hook this up to your help screen.")}
+                onPress={() => Alert.alert("Sir, di pa po tapos")}
               />
-              <SettingRow icon="log-out-outline" label="Log out" danger onPress={logout} last />
+              <SettingRow icon="log-out-outline" 
+                label="Log out" 
+                onPress={logout} danger last />
+              
             </Card>
 
             <Text style={{ color: MUTED, fontSize: 11, textAlign: "center", fontFamily: "REM_REGULAR" }}>

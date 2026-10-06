@@ -94,8 +94,7 @@ const LANGUAGES = ["English", "Filipino"] as const;
 
 export default function Settings() {
   const router = useRouter();
-  const { signOut } = useAuth();
-
+  const { role, signOut } = useAuth();  
   // TODO: persist these (AsyncStorage or your backend) so they survive app restarts
   const [pushOn, setPushOn] = useState(true);
   const [requestUpdates, setRequestUpdates] = useState(true);
@@ -105,7 +104,7 @@ export default function Settings() {
   const [language, setLanguage] = useState<(typeof LANGUAGES)[number]>("English");
   const [textSize, setTextSize] = useState<(typeof TEXT_SIZES)[number]>("Medium");
 
-  const soon = (what: string) => Alert.alert("Coming soon", `Hook this up to your ${what} screen.`);
+  const soon = (what: string) => Alert.alert("Sir, di pa po tapos...");
 
   const pickLanguage = () =>
     Alert.alert("Language", "Choose your language", [
@@ -125,6 +124,9 @@ export default function Settings() {
       },
     ]);
 
+  const goHome = () =>
+    router.navigate((role === "official" ? "/official-home" : "/") as any);
+
   const deleteAccount = () =>
     Alert.alert(
       "Delete account",
@@ -135,8 +137,7 @@ export default function Settings() {
           text: "Delete",
           style: "destructive",
           onPress: () => {
-            // TODO: call your delete-account endpoint, then clear session
-            router.navigate("/");
+            signOut();
           },
         },
       ]
@@ -182,7 +183,7 @@ export default function Settings() {
           }}
         >
           <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Pressable onPress={() => router.navigate("/")} hitSlop={12} style={{ marginRight: 12 }}>
+            <Pressable onPress={goHome} hitSlop={12} style={{ marginRight: 12 }}>
               <Ionicons name="chevron-back" size={28} color={INK} />
             </Pressable>
             <Text style={{ color: INK, fontSize: 20, fontFamily: "REM_BOLD" }}>Settings</Text>

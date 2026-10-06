@@ -13,6 +13,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { supabase } from "../../lib/supabase";
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const FIELD_BG = "#ffffff";
@@ -52,8 +53,9 @@ function Field({ label, style, inputStyle, ...props }: any) {
 }
 
 export default function DocumentRequest() {
-  const router = useRouter();
+  const router = useRouter(); 
 
+  const [sending, setSending] = useState(false);
   const [fullName, setFullName] = useState("");
   const [contact, setContact] = useState("");
   const [address, setAddress] = useState("");
@@ -67,7 +69,7 @@ export default function DocumentRequest() {
     else router.navigate("/");
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!fullName.trim() || !contact.trim() || !address.trim() || !docType || !purpose.trim()) {
       Alert.alert("Missing information", "Please fill in all the fields.");
       return;
@@ -76,6 +78,25 @@ export default function DocumentRequest() {
       Alert.alert("Copies", "Please enter at least 1 copy.");
       return;
     }
+
+    setSending(true);
+
+    const { error } = await supabase.from("document_requests").insert({
+      full_name: fullName.trim(),
+      contact: contact.trim(),
+      address: address.trim(),
+      doc_type: docType,
+      copies: Number(copies),
+      purpose: purpose.trim(),
+    });
+
+    setSending(false);
+
+    if (error) {
+      Alert.alert("Could not submit", error.message);
+      return;
+    }
+
     Alert.alert("Request submitted", `Your ${docType} request has been sent.`, [
       { text: "OK", onPress: () => router.navigate("/") },
     ]);
@@ -143,6 +164,7 @@ export default function DocumentRequest() {
           <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
             <Field
               label="Full Name"
+              placeholder="e.g. Juan Dela Cruz"
               style={{ flex: 1 }}
               value={fullName}
               onChangeText={setFullName}
@@ -150,6 +172,7 @@ export default function DocumentRequest() {
             />
             <Field
               label="Contact Number"
+              placeholder="e.g. 0917 123 4567"
               style={{ flex: 1 }}
               value={contact}
               onChangeText={setContact}
@@ -157,15 +180,7 @@ export default function DocumentRequest() {
             />
           </View>
 
-          {/* Address */}
-          <Field
-            label="Address"
-            style={{ marginBottom: 16 }}
-            value={address}
-            onChangeText={setAddress}
-          />
-
-          {/* Document Type + Copies */}
+             {/* Document Type + Copies */}
           <View style={{ flexDirection: "row", gap: 12, marginBottom: 16 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: INK, fontSize: 13, marginBottom: 4, marginLeft: 12, fontFamily: "REM_BOLD" }}>
@@ -204,22 +219,33 @@ export default function DocumentRequest() {
             />
           </View>
 
-          {/* Purpose */}
+          {/* Address */}
           <Field
-            label="Purpose"
-            style={{ marginBottom: 20 }}
-            value={purpose}
-            onChangeText={setPurpose}
-            multiline
-            textAlignVertical="top"
-            inputStyle={{ height: 130, paddingTop: 14, borderRadius: 28 }}
+            label="Address"
+            placeholder="e.g. 123 Rizal St. Liliw, Laguna"
+            style={{ marginBottom: 16 }}
+            value={address}
+            onChangeText={setAddress}
           />
+
+          {/* Address */}
+          <Field
+          label="Purpose"
+          placeholder="e.g. Employment requirement, scholarship application"
+          style={{ marginBottom: 20 }}
+          value={purpose}
+          onChangeText={setPurpose}
+          multiline
+          textAlignVertical="top"
+          inputStyle={{ height: 130, paddingTop: 14, borderRadius: 28 }}
+        />
 
           {/* Submit */}
           <View style={{ alignItems: "flex-end" }}>
             <Pressable
               onPress={submit}
-              style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, width: 140 })}
+              disabled={sending}
+              style={({ pressed }) => ({ opacity: pressed || sending ? 0.6 : 1, width: 140 })}
             >
               <LinearGradient
                 colors={ORANGE}

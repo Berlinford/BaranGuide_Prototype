@@ -4,17 +4,18 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    Text,
-    TextInput,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
+import { supabase } from "../../lib/supabase";
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const INK = "#3B2300";
@@ -222,30 +223,56 @@ export default function Register() {
   };
 
   const submit = async () => {
+    console.log("signUp starting");
     if (loading) return;
     const error = validate();
     if (error) return Alert.alert("Check your details", error);
 
-    const payload = {
-      role,
-      fullName: fullName.trim(),
-      contact: contact.replace(/\s|-/g, ""),
-      email: email.trim().toLowerCase(),
-      password, // send over HTTPS only, and never store it in plain text
-      idPhoto,
-      ...(role === "resident"
-        ? { birthdate: birthdate.trim(), sex, civilStatus: civil, address: address.trim(), purok: purok.trim() }
-        : { position, officialId: officialId.trim() }),
-    };
-
     setLoading(true);
     try {
-      // TODO: send `payload` to your backend. The server must create the account as "pending"
-      // and let only an admin approve it, especially for officials.
-      console.log("Register:", { ...payload, password: "***" });
-      await new Promise((r) => setTimeout(r, 800)); // fake delay, remove this
+      const { data, error: signUpError } = await supabase.auth.signUp({
+        email: email.trim().toLowerCase(),
+        password,
+        options: {
+          data: {
+            requested_role: role,
+            full_name: fullName.trim(),
+            contact: contact.replace(/\s|-/g, ""),
+            birthdate: birthdate.trim(),
+            sex,
+            civil_status: civil,
+            address: address.trim(),
+            purok: purok.trim(),
+            position,
+            id_number: officialId.trim(),
+          },
+        },
+      });
+
+      if (signUpError) {
+        Alert.alert("Sign up failed", signUpError.message);
+        return;
+      }
+      if (!data.session || !data.user) {
+        Alert.alert("Setup needed", "Turn off 'Confirm email' in Supabase so the ID can be uploaded.");
+        return;
+      }
+
+      // upload the ID photo to the private bucket
+      const buf = await (await fetch(idPhoto!)).arrayBuffer();
+      const { error: upErr } = await supabase.storage
+        .from("ids")
+        .upload(`${data.user.id}/id.jpg`, buf, { contentType: "image/jpeg" });
+      if (upErr) {
+        console.log("ID upload error:", upErr);
+        Alert.alert("ID upload failed", upErr.message);
+        return;
+      }
+
+      await supabase.auth.signOut(); // they must wait for approval
       setDone(true);
-    } catch {
+    } catch (e) {
+      console.log("Register error:", e);
       Alert.alert("Sign up failed", "Something went wrong. Try again.");
     } finally {
       setLoading(false);

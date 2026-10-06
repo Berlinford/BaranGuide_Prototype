@@ -14,12 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { useAuth } from "../../context/AuthContext";
-
-const DEMO_ACCOUNTS = [
-  { identifier: "lagdaan@email.com", password: "123456", role: "resident" },
-  { identifier: "pumar@email.com", password: "123456", role: "official" },
-] as const;
+import { supabase } from "../../lib/supabase";
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const INK = "#3B2300";
@@ -29,7 +24,6 @@ const PLACEHOLDER = "#A88B5C";
 const TAGLINE = "Your community services, in your pocket.";
 
 export default function Login() {
-  const { signIn } = useAuth();
   const router = useRouter(); 
 
   const [identifier, setIdentifier] = useState("");
@@ -42,29 +36,45 @@ export default function Login() {
 
   const submit = async () => {
     if (loading) return;
-    if (!identifier.trim()) return Alert.alert("Missing info", "Enter your email or contact number.");
+    if (!identifier.trim()) return Alert.alert("Missing info", "Enter your email.");
     if (!password) return Alert.alert("Missing info", "Enter your password.");
 
     setLoading(true);
-        try {
-        await new Promise((r) => setTimeout(r, 800)); // fake delay
-
-        const account = DEMO_ACCOUNTS.find(
-            (a) => a.identifier === identifier.trim().toLowerCase() && a.password === password
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: identifier.trim().toLowerCase(),
+        password,
+      });
+      if (error) {
+        Alert.alert(
+          "Login failed",
+          error.message === "Invalid login credentials" ? "Wrong email or password." : error.message
         );
+        return;
+      }
 
-        if (!account) {
-            Alert.alert("Login failed", "Wrong email or password.");
-            return;
-        }
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("status")
+        .eq("id", data.user.id)
+        .single();
 
-        await signIn("demo-token", account.role);
-        } catch (e) {
-            console.log("Login error:", e);
-            Alert.alert("Login failed", "Something went wrong. Try again.");
-        } finally {
-            setLoading(false);
-        }
+      if (prof?.status !== "approved") {
+        await supabase.auth.signOut();
+        Alert.alert(
+          prof?.status === "rejected" ? "Account not approved" : "Waiting for approval",
+          prof?.status === "rejected"
+            ? "Your registration was rejected. Please contact the barangay office."
+            : "Barangay staff are still checking your details. Try again once you're approved."
+        );
+      }
+      // approved users are redirected by the layout automatically
+    } catch (e) {
+      console.log("Login error:", e);
+      Alert.alert("Login failed", "Something went wrong. Try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputWrap = (active: boolean) => ({
@@ -184,7 +194,7 @@ export default function Login() {
           </View>
 
           <Pressable
-            onPress={() => Alert.alert("Coming soon", "Hook this up to your forgot password screen.")}
+            onPress={() => Alert.alert("Sir, di pa po tapos...")}
             hitSlop={8}
             style={{ alignSelf: "flex-end", marginRight: 6 }}
           >
