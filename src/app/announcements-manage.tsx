@@ -1,10 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useState } from "react";
-import { Alert, Pressable, Switch, Text, TextInput, View } from "react-native";
+import * as Crypto from "expo-crypto";
+import * as ImageManipulator from "expo-image-manipulator";
+import * as ImagePicker from "expo-image-picker";
+import { useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
+import { Alert, Image, Pressable, Switch, Text, TextInput, View } from "react-native";
+import AnnouncementCard, { Category, NewsCard, Post } from "../../components/AnnouncementCard";
 import {
   ActionButton,
   Card,
-  Chip,
   EmptyState,
   FilterTabs,
   GOLD,
@@ -13,33 +17,11 @@ import {
   Page,
   PLACEHOLDER,
 } from "../../components/ui";
+import { useCached } from "../../lib/offline";
+import { supabase } from "../../lib/supabase";
+import { uploadPhoto } from "../../lib/upload";
 
 const CATEGORIES = ["Announcement", "Advisory", "Event"] as const;
-type Category = (typeof CATEGORIES)[number];
-
-type Post = {
-  id: number;
-  category: Category;
-  title: string;
-  body: string;
-  when: string;
-  urgent: boolean;
-  eventDate?: string;
-  eventTime?: string;
-};
-
-const CATEGORY_COLORS: Record<Category, { bg: string; text: string }> = {
-  Announcement: { bg: "#FFF1C2", text: "#6B4A00" },
-  Advisory: { bg: "#FFD9A8", text: "#7A3E00" },
-  Event: { bg: "#CDEFD3", text: "#14532D" },
-};
-
-// TODO: load and save posts with your backend
-const INITIAL: Post[] = [
-  { id: 1, category: "Advisory", title: "Water interruption this Sunday", body: "No water from 8 AM to 4 PM due to pipe repairs. Please store water ahead of time.", when: "Posted today", urgent: true },
-  { id: 2, category: "Announcement", title: "Free pet vaccination", body: "Bring your pets to the barangay hall. First come, first served.", when: "Oct 1", urgent: false },
-  { id: 3, category: "Event", title: "Barangay assembly", body: "All residents are invited.", when: "Sep 28", urgent: false, eventDate: "Oct 12", eventTime: "2:00 PM" },
-];
 
 function Input({
   value,
@@ -75,59 +57,159 @@ function Input({
 }
 
 export default function AnnouncementsManage() {
-  const [posts, setPosts] = useState<Post[]>(INITIAL);
   const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   const [category, setCategory] = useState<Category>("Announcement");
   const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
+  const [description, setDescription] = useState("");
+  const [location, setLocation] = useState("");
   const [eventDate, setEventDate] = useState("");
   const [eventTime, setEventTime] = useState("");
   const [urgent, setUrgent] = useState(false);
+  const [imageUri, setImageUri] = useState<string | null>(null); // flattened JPEG on the phone
+
+  const { data, loading, offline, refresh } = useCached<Post[]>("announcements", async () => {
+    const { data, error } = await supabase
+      .from("announcements")
+      .select("id, category, title, body, location, urgent, event_date, event_time, image_path, created_at")
+      .order("created_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []) as Post[];
+  });
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  };
 
   const resetForm = () => {
     setCategory("Announcement");
     setTitle("");
-    setBody("");
+    setDescription("");
+    setLocation("");
     setEventDate("");
     setEventTime("");
     setUrgent(false);
+    setImageUri(null);
   };
 
-  const publish = () => {
+  const failMessage = (e: { code?: string; message: string }) =>
+    e.code ? e.message : "You need internet to do this. Try again once you're online.";
+
+  const pickImage = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Allow photo access to add a picture.");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ["images"], quality: 1 });
+    if (res.canceled) return;
+
+    try {
+      // resize + re-encode as a plain JPEG (also flattens transparent PNGs)
+      const out = await ImageManipulator.manipulateAsync(
+        res.assets[0].uri,
+        [{ resize: { width: 1280 } }],
+        { compress: 0.8, format: ImageManipulator.SaveFormat.JPEG }
+      );
+      setImageUri(out.uri);
+    } catch (e) {
+      console.log("pickImage error:", e);
+      Alert.alert("Couldn't read the photo", "Try a different picture.");
+    }
+  };
+
+  const publish = async () => {
+    if (saving) return;
     if (!title.trim()) return Alert.alert("Missing info", "Enter a title.");
-    if (!body.trim()) return Alert.alert("Missing info", "Write the details.");
+    if (!description.trim()) return Alert.alert("Missing info", "Write a description.");
+    if (!imageUri) return Alert.alert("Missing info", "Add a photo for this post.");
+    if (!location.trim()) return Alert.alert("Missing info", "Enter the location.");
     if (category === "Event" && (!eventDate.trim() || !eventTime.trim()))
       return Alert.alert("Missing info", "Enter the event date and time.");
 
-    const post: Post = {
-      id: Date.now(),
+    setSaving(true);
+
+    // 1. upload the photo
+    const imagePath = `${Crypto.randomUUID()}.jpg`;
+    try {
+      await uploadPhoto("announcements", imagePath, imageUri);
+    } catch (e: any) {
+      console.log("upload error:", e);
+      setSaving(false);
+      return Alert.alert("Couldn't upload the photo", e?.message ?? "Check your internet and try again.");
+    }
+
+    // 2. save the post
+    const { error } = await supabase.from("announcements").insert({
       category,
       title: title.trim(),
-      body: body.trim(),
-      when: "Posted just now",
+      body: description.trim(),
+      location: location.trim(),
       urgent,
-      ...(category === "Event" ? { eventDate: eventDate.trim(), eventTime: eventTime.trim() } : {}),
-    };
+      event_date: category === "Event" ? eventDate.trim() : null,
+      event_time: category === "Event" ? eventTime.trim() : null,
+      image_path: imagePath,
+    });
+    setSaving(false);
 
-    // TODO: send `post` to your backend (and push a notification if `urgent`)
-    setPosts((p) => [post, ...p]);
+    if (error) {
+      // don't leave an orphaned photo behind
+      supabase.storage.from("announcements").remove([imagePath]).catch(() => {});
+      return Alert.alert("Couldn't publish", failMessage(error));
+    }
+
     resetForm();
     setShowForm(false);
+    refresh();
   };
 
   const remove = (p: Post) =>
     Alert.alert("Delete post?", `"${p.title}" will disappear for all residents.`, [
       { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => setPosts((l) => l.filter((x) => x.id !== p.id)) },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          const { error } = await supabase.from("announcements").delete().eq("id", p.id);
+          if (error) return Alert.alert("Couldn't delete", failMessage(error));
+          if (p.image_path) supabase.storage.from("announcements").remove([p.image_path]).catch(() => {});
+          refresh();
+        },
+      },
     ]);
 
+  const posts = (data ?? [])
+    .slice()
+    .sort(
+      (a, b) =>
+        Number(b.urgent) - Number(a.urgent) ||
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+
   return (
-    <Page title="Announcements" variant="official">
+    <Page title="Announcements" variant="official" refreshing={refreshing} onRefresh={onRefresh}>
       {!showForm ? (
         <Pressable
           onPress={() => setShowForm(true)}
-          style={{ backgroundColor: INK, borderRadius: 32, paddingVertical: 14, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8 }}
+          style={{
+            backgroundColor: INK,
+            borderRadius: 32,
+            paddingVertical: 14,
+            flexDirection: "row",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 8,
+          }}
         >
           <Ionicons name="add-circle-outline" size={22} color={GOLD} />
           <Text style={{ color: GOLD, fontSize: 15, fontFamily: "REM_BOLD" }}>New post</Text>
@@ -139,7 +221,59 @@ export default function AnnouncementsManage() {
           <FilterTabs options={CATEGORIES} value={category} onChange={setCategory} />
 
           <Input value={title} onChangeText={setTitle} placeholder="Title" />
-          <Input value={body} onChangeText={setBody} placeholder="Details residents should know" multiline />
+          <Input value={description} onChangeText={setDescription} placeholder="Description" multiline />
+          <Input
+            value={location}
+            onChangeText={setLocation}
+            placeholder="Location (e.g. Barangay hall)"
+          />
+
+          {/* Photo (required) */}
+          {imageUri ? (
+            <View>
+              <Image
+                source={{ uri: imageUri }}
+                style={{ width: "100%", aspectRatio: 16 / 9, borderRadius: 16, backgroundColor: "#FFE0B0" }}
+                resizeMode="cover"
+              />
+              <Pressable
+                onPress={() => setImageUri(null)}
+                hitSlop={8}
+                style={{
+                  position: "absolute",
+                  top: 8,
+                  right: 8,
+                  width: 28,
+                  height: 28,
+                  borderRadius: 14,
+                  backgroundColor: INK,
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Ionicons name="close" size={18} color="#fff" />
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable
+              onPress={pickImage}
+              style={{
+                backgroundColor: "#FFF1C7",
+                borderRadius: 20,
+                paddingVertical: 22,
+                alignItems: "center",
+                gap: 4,
+                borderWidth: 2,
+                borderColor: "#F5E6BE",
+                borderStyle: "dashed",
+              }}
+            >
+              <Ionicons name="image-outline" size={28} color={MUTED} />
+              <Text style={{ color: INK, fontSize: 13, fontFamily: "REM_BOLD" }}>
+                Add a photo <Text style={{ color: "#C2410C" }}>*</Text>
+              </Text>
+            </Pressable>
+          )}
 
           {category === "Event" && (
             <View style={{ flexDirection: "row", gap: 10 }}>
@@ -155,49 +289,74 @@ export default function AnnouncementsManage() {
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
             <View style={{ flex: 1 }}>
               <Text style={{ color: INK, fontSize: 14, fontFamily: "REM_BOLD" }}>Mark as urgent</Text>
-              <Text style={{ color: MUTED, fontSize: 11, fontFamily: "REM_REGULAR" }}>Pins it to the top and alerts residents</Text>
+              <Text style={{ color: MUTED, fontSize: 11, fontFamily: "REM_REGULAR" }}>
+                Pins it to the top of residents' list
+              </Text>
             </View>
-            <Switch value={urgent} onValueChange={setUrgent} trackColor={{ false: "#E5D3A8", true: "#FF9A4D" }} thumbColor="#fff" />
+            <Switch
+              value={urgent}
+              onValueChange={setUrgent}
+              trackColor={{ false: "#E5D3A8", true: "#FF9A4D" }}
+              thumbColor="#fff"
+            />
           </View>
 
           <View style={{ flexDirection: "row", gap: 10 }}>
-            <ActionButton label="Cancel" tone="ghost" onPress={() => { resetForm(); setShowForm(false); }} />
-            <ActionButton label="Publish" icon="send-outline" onPress={publish} />
+            <ActionButton
+              label="Cancel"
+              tone="ghost"
+              disabled={saving}
+              onPress={() => {
+                resetForm();
+                setShowForm(false);
+              }}
+            />
+            <ActionButton
+              label={saving ? "Publishing..." : "Publish"}
+              icon="send-outline"
+              disabled={saving}
+              onPress={publish}
+            />
           </View>
         </Card>
       )}
 
-      <Text style={{ color: INK, fontSize: 16, fontFamily: "REM_BOLD", marginLeft: 4 }}>Posted ({posts.length})</Text>
+      {offline && (
+        <Text
+          style={{
+            color: "#7A3E00",
+            backgroundColor: "#FFD9A8",
+            borderRadius: 16,
+            padding: 8,
+            textAlign: "center",
+            fontSize: 11,
+            fontFamily: "REM_BOLD",
+          }}
+        >
+          Couldn't reach the server. Showing saved data. Posting needs internet.
+        </Text>
+      )}
 
-      {posts.length === 0 ? (
-        <EmptyState icon="megaphone-outline" title="No posts yet" sub="Residents will see your posts on their home screen." />
+      <Text style={{ color: INK, fontSize: 16, fontFamily: "REM_BOLD", marginLeft: 4 }}>
+        Posted ({posts.length})
+      </Text>
+
+      {loading ? (
+        <Text style={{ color: INK, textAlign: "center", fontFamily: "REM_REGULAR" }}>Loading...</Text>
+      ) : posts.length === 0 ? (
+        <EmptyState
+          icon="megaphone-outline"
+          title="No posts yet"
+          sub="Residents will see your posts in their announcements."
+        />
       ) : (
-        posts.map((p) => {
-          const c = CATEGORY_COLORS[p.category];
-          return (
-            <Card key={p.id} style={{ gap: 8 }}>
-              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                <Chip label={p.category} bg={c.bg} text={c.text} />
-                {p.urgent && <Chip label="Urgent" bg="#FFC9B8" text="#7A1F00" />}
-                <Text style={{ marginLeft: "auto", color: MUTED, fontSize: 11, fontFamily: "REM_REGULAR" }}>{p.when}</Text>
-              </View>
-              <Text style={{ color: INK, fontSize: 15, fontFamily: "REM_BOLD" }}>{p.title}</Text>
-              <Text style={{ color: INK, fontSize: 12, lineHeight: 18, fontFamily: "REM_REGULAR" }}>{p.body}</Text>
-              {p.eventDate && (
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-                  <Ionicons name="calendar-outline" size={14} color={MUTED} />
-                  <Text style={{ color: MUTED, fontSize: 12, fontFamily: "REM_BOLD" }}>
-                    {p.eventDate} · {p.eventTime}
-                  </Text>
-                </View>
-              )}
-              <Pressable onPress={() => remove(p)} hitSlop={8} style={{ flexDirection: "row", alignItems: "center", gap: 4, alignSelf: "flex-end" }}>
-                <Ionicons name="trash-outline" size={16} color="#D92D20" />
-                <Text style={{ color: "#D92D20", fontSize: 12, fontFamily: "REM_BOLD" }}>Delete</Text>
-              </Pressable>
-            </Card>
-          );
-        })
+        posts.map((p) =>
+          p.category === "Event" ? (
+            <AnnouncementCard key={p.id} post={p} onDelete={remove} compact/>
+          ) : (
+            <NewsCard key={p.id} post={p} onDelete={remove} fullWidth />
+          )
+        )
       )}
     </Page>
   );

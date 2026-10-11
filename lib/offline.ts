@@ -18,7 +18,8 @@ export function useCached<T>(key: string | null, fetcher: () => Promise<T>) {
       setOffline(false);
       await AsyncStorage.setItem(`cache:${key}`, JSON.stringify(fresh));
     } catch (e) {
-        setOffline(true);
+      console.log("useCached error:", key, e);
+      setOffline(true);
     } finally {
       setLoading(false);
     }
@@ -42,23 +43,32 @@ export function useCached<T>(key: string | null, fetcher: () => Promise<T>) {
 /* ---------- WRITE: send now, or queue only if the network is down ---------- */
 type Job = { table: string; row: Record<string, any> };
 
-// Postgres/PostgREST errors have a `code`. Network failures don't.
+// Postgres/PostgREST errors have a `code`. Network failures and timeouts don't.
 const isNetworkError = (e: any) => !e?.code;
 
-export async function submit(table: string, row: Record<string, any>) {
+export async function submit(
+  table: string,
+  row: Record<string, any>,
+  opts?: { timeoutMs?: number }
+) {
   const full = { id: Crypto.randomUUID(), ...row };
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), opts?.timeoutMs ?? 15000);
   const { error } = await supabase
     .from(table)
-    .upsert(full, { onConflict: "id", ignoreDuplicates: true });
+    .upsert(full, { onConflict: "id", ignoreDuplicates: true })
+    .abortSignal(ctrl.signal);
+  clearTimeout(timer);
 
-  if (!error) return { queued: false as const, error: null };
-  if (!isNetworkError(error)) return { queued: false as const, error }; // real rejection
+  if (!error) return { queued: false as const, error: null, id: full.id as string };
+  if (!isNetworkError(error)) return { queued: false as const, error, id: full.id as string };
 
   const raw = await AsyncStorage.getItem("queue");
   const queue: Job[] = raw ? JSON.parse(raw) : [];
   queue.push({ table, row: full });
   await AsyncStorage.setItem("queue", JSON.stringify(queue));
-  return { queued: true as const, error: null };
+  return { queued: true as const, error: null, id: full.id as string };
 }
 
 let flushing = false;

@@ -4,6 +4,7 @@ import * as Location from "expo-location";
 import { useRouter } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Animated,
   Easing,
@@ -14,6 +15,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { submit as sendRow } from "../../lib/offline";
+import { supabase } from "../../lib/supabase";
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const INK = "#3B2300";
@@ -39,7 +42,7 @@ const EMERGENCY_TYPES = [
   { label: "Other", icon: "alert-circle-outline" },
 ] as const;
 
-type Phase = "idle" | "countdown" | "sent";
+type Phase = "idle" | "countdown" | "sending" | "sent";
 type Coords = { latitude: number; longitude: number } | null;
 
 export default function SOS() {
@@ -53,9 +56,15 @@ export default function SOS() {
   const [address, setAddress] = useState("");
   const [locStatus, setLocStatus] = useState<"loading" | "ok" | "denied">("loading");
   const [refNo, setRefNo] = useState("");
+  const [queued, setQueued] = useState(false);
 
   const progress = useRef(new Animated.Value(0)).current;
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sendingRef = useRef(false);
+
+  // always holds the newest values, so the countdown never sends stale data
+  const latest = useRef({ type, note, coords, address });
+  latest.current = { type, note, coords, address };
 
   // Get location as soon as the screen opens so it's ready when needed
   useEffect(() => {
@@ -72,11 +81,14 @@ export default function SOS() {
         setCoords({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
         setLocStatus("ok");
 
-        const [place] = await Location.reverseGeocodeAsync(pos.coords);
-        if (active && place) {
-          const parts = [place.street, place.district, place.city, place.region].filter(Boolean);
-          setAddress(parts.join(", "));
-        }
+        // the street name needs internet; GPS doesn't. Failing here must not mark location as lost.
+        try {
+          const [place] = await Location.reverseGeocodeAsync(pos.coords);
+          if (active && place) {
+            const parts = [place.street, place.district, place.city, place.region].filter(Boolean);
+            setAddress(parts.join(", "));
+          }
+        } catch {}
       } catch {
         if (active) setLocStatus("denied");
       }
@@ -126,28 +138,52 @@ export default function SOS() {
     setPhase("idle");
   };
 
-  const sendAlert = () => {
-    const ref = `SOS-${Math.floor(1000 + Math.random() * 9000)}`;
-    const payload = {
-      ref,
-      type,
-      note: note.trim(),
-      coords,
-      address: address.trim(),
-      sentAt: new Date().toISOString(),
-    };
+  const sendAlert = async () => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    setPhase("sending");
 
-    // TODO: send `payload` to your backend
-    console.log("SOS alert:", payload);
+    const v = latest.current;
+    const { queued: wasQueued, error, id } = await sendRow(
+      "sos_alerts",
+      {
+        type: v.type,
+        note: v.note.trim() || null,
+        lat: v.coords?.latitude ?? null,
+        lng: v.coords?.longitude ?? null,
+        address: v.address.trim() || null,
+      },
+      { timeoutMs: 8000 }
+    );
+    sendingRef.current = false;
 
-    setRefNo(ref);
+    if (error) {
+      progress.setValue(0);
+      setPhase("idle");
+      Alert.alert(
+        "Couldn't send the alert",
+        `${error.message}\n\nCall 911 or the barangay hotline now.`
+      );
+      return;
+    }
+
+    setQueued(wasQueued);
     setPhase("sent");
+
+    if (!wasQueued) {
+      try {
+        const { data } = await supabase.from("sos_alerts").select("ref").eq("id", id).maybeSingle();
+        setRefNo(data?.ref ?? "");
+      } catch {}
+    }
   };
 
   const reset = () => {
     progress.setValue(0);
     setType("Other");
     setNote("");
+    setRefNo("");
+    setQueued(false);
     setPhase("idle");
   };
 
@@ -159,6 +195,7 @@ export default function SOS() {
 
   const ringSize = progress.interpolate({ inputRange: [0, 1], outputRange: [190, 250] });
   const ringOpacity = progress.interpolate({ inputRange: [0, 1], outputRange: [0.15, 0.4] });
+  const busy = phase === "countdown" || phase === "sending";
 
   return (
     <ScrollView
@@ -210,27 +247,37 @@ export default function SOS() {
 
       <View style={{ paddingHorizontal: 20, paddingTop: 20, gap: 20 }}>
         {phase === "sent" ? (
-          /* ---------- SENT ---------- */
+          /* ---------- SENT / SAVED ---------- */
           <View style={{ alignItems: "center", paddingVertical: 24, gap: 14 }}>
             <View
               style={{
                 width: 96,
                 height: 96,
                 borderRadius: 48,
-                backgroundColor: "#CDEFD3",
+                backgroundColor: queued ? "#FFD9A8" : "#CDEFD3",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <Ionicons name="checkmark" size={56} color="#14532D" />
+              <Ionicons
+                name={queued ? "time-outline" : "checkmark"}
+                size={56}
+                color={queued ? "#7A3E00" : "#14532D"}
+              />
             </View>
-            <Text style={{ color: INK, fontSize: 22, fontFamily: "REM_BOLD" }}>Alert sent</Text>
-            <Text style={{ color: MUTED, fontSize: 13, textAlign: "center", fontFamily: "REM_REGULAR" }}>
-              The barangay has your location and will respond. Stay where you are if it's safe.
+            <Text style={{ color: INK, fontSize: 22, fontFamily: "REM_BOLD" }}>
+              {queued ? "Saved, not sent yet" : "Alert sent"}
             </Text>
-            <View style={{ backgroundColor: "#fff", borderRadius: 24, paddingHorizontal: 18, paddingVertical: 10 }}>
-              <Text style={{ color: INK, fontSize: 13, fontFamily: "REM_BOLD" }}>Reference: {refNo}</Text>
-            </View>
+            <Text style={{ color: MUTED, fontSize: 13, textAlign: "center", fontFamily: "REM_REGULAR" }}>
+              {queued
+                ? "You have no internet right now. The alert will go out automatically once you're connected, but don't wait. Call for help now."
+                : "The barangay has your location and will respond. Stay where you are if it's safe."}
+            </Text>
+            {!queued && refNo ? (
+              <View style={{ backgroundColor: "#fff", borderRadius: 24, paddingHorizontal: 18, paddingVertical: 10 }}>
+                <Text style={{ color: INK, fontSize: 13, fontFamily: "REM_BOLD" }}>Reference: {refNo}</Text>
+              </View>
+            ) : null}
 
             <Pressable
               onPress={() => callNumber("911")}
@@ -249,6 +296,25 @@ export default function SOS() {
               <Ionicons name="call" size={20} color="#fff" />
               <Text style={{ color: "#fff", fontSize: 16, fontFamily: "REM_BOLD" }}>Call 911 now</Text>
             </Pressable>
+
+            {queued && (
+              <Pressable
+                onPress={() => callNumber(HOTLINES[1].number)}
+                style={{
+                  alignSelf: "stretch",
+                  backgroundColor: INK,
+                  borderRadius: 32,
+                  paddingVertical: 14,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <Ionicons name="home-outline" size={18} color="#FFD966" />
+                <Text style={{ color: "#FFD966", fontSize: 14, fontFamily: "REM_BOLD" }}>Call the barangay</Text>
+              </Pressable>
+            )}
 
             <Pressable
               onPress={reset}
@@ -270,7 +336,7 @@ export default function SOS() {
                   return (
                     <Pressable
                       key={t.label}
-                      disabled={phase === "countdown"}
+                      disabled={busy}
                       onPress={() => setType(t.label)}
                       style={{
                         flexDirection: "row",
@@ -301,12 +367,13 @@ export default function SOS() {
                   height: ringSize,
                   borderRadius: 200,
                   backgroundColor: RED,
-                  opacity: phase === "countdown" ? 0.3 : ringOpacity,
+                  opacity: busy ? 0.3 : ringOpacity,
                 }}
               />
-              {phase === "countdown" ? (
+              {busy ? (
                 <Pressable
                   onPress={cancelCountdown}
+                  disabled={phase === "sending"}
                   style={{
                     width: 170,
                     height: 170,
@@ -317,8 +384,19 @@ export default function SOS() {
                     elevation: 8,
                   }}
                 >
-                  <Text style={{ color: "#fff", fontSize: 54, fontFamily: "REM_BOLD" }}>{count}</Text>
-                  <Text style={{ color: "#FFD966", fontSize: 14, fontFamily: "REM_BOLD" }}>Tap to cancel</Text>
+                  {phase === "sending" ? (
+                    <>
+                      <ActivityIndicator size="large" color="#fff" />
+                      <Text style={{ color: "#FFD966", fontSize: 14, fontFamily: "REM_BOLD", marginTop: 8 }}>
+                        Sending...
+                      </Text>
+                    </>
+                  ) : (
+                    <>
+                      <Text style={{ color: "#fff", fontSize: 54, fontFamily: "REM_BOLD" }}>{Math.max(count, 0)}</Text>
+                      <Text style={{ color: "#FFD966", fontSize: 14, fontFamily: "REM_BOLD" }}>Tap to cancel</Text>
+                    </>
+                  )}
                 </Pressable>
               ) : (
                 <Pressable
@@ -347,7 +425,9 @@ export default function SOS() {
             <Text style={{ color: MUTED, fontSize: 12, textAlign: "center", fontFamily: "REM_REGULAR", marginTop: -8 }}>
               {phase === "countdown"
                 ? "Sending your alert. Tap the button to stop it."
-                : "Hold for 1.5 seconds. You'll get 5 seconds to cancel before it's sent."}
+                : phase === "sending"
+                ? "Sending your alert..."
+                : `Hold for 1.5 seconds. You'll get ${COUNTDOWN} seconds to cancel before it's sent.`}
             </Text>
 
             {/* Location */}
