@@ -1,4 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
+import * as Crypto from "expo-crypto";
+import * as ImageManipulator from "expo-image-manipulator";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
@@ -15,6 +17,8 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { supabase } from "../../lib/supabase";
+import { uploadPhoto } from "../../lib/upload";
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const INK = "#3B2300";
@@ -45,6 +49,15 @@ function formatNow() {
   const date = d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
   const time = d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
   return { date, time };
+}
+
+// resize + re-encode as a plain JPEG (also converts PNG / HEIC photos)
+async function toJpeg(uri: string) {
+  const out = await ImageManipulator.manipulateAsync(uri, [{ resize: { width: 1280 } }], {
+    compress: 0.8,
+    format: ImageManipulator.SaveFormat.JPEG,
+  });
+  return out.uri;
 }
 
 function Label({ children, required }: { children: string; required?: boolean }) {
@@ -120,6 +133,7 @@ export default function IncidentReport() {
   const [anonymous, setAnonymous] = useState(false);
   const [name, setName] = useState("");
   const [contact, setContact] = useState("");
+  const [sending, setSending] = useState(false);
 
   const pickPhoto = async () => {
     if (photos.length >= MAX_PHOTOS) {
@@ -132,7 +146,7 @@ export default function IncidentReport() {
       return;
     }
     const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       quality: 0.7,
     });
     if (!res.canceled) setPhotos((p) => [...p, res.assets[0].uri]);
@@ -168,28 +182,52 @@ export default function IncidentReport() {
     setContact("");
   };
 
-  const submit = () => {
+  const submit = async () => {
+    if (sending) return;
     if (!type) return Alert.alert("Missing info", "Choose an incident type.");
     if (details.trim().length < 10) return Alert.alert("Missing info", "Describe what happened (at least a short sentence).");
     if (!address.trim()) return Alert.alert("Missing info", "Enter where it happened.");
     if (!anonymous && (!name.trim() || !contact.trim()))
       return Alert.alert("Missing info", "Enter your name and contact number, or turn on anonymous report.");
 
-    const payload = {
+    setSending(true);
+
+    // 1. upload the photos
+    const uploaded: string[] = [];
+    try {
+      for (const uri of photos) {
+        const path = `${Crypto.randomUUID()}.jpg`;
+        await uploadPhoto("incident-photos", path, await toJpeg(uri));
+        uploaded.push(path);
+      }
+    } catch (e: any) {
+      console.log("photo upload error:", e);
+      if (uploaded.length) supabase.storage.from("incident-photos").remove(uploaded).catch(() => {});
+      setSending(false);
+      return Alert.alert("Couldn't upload the photos", e?.message ?? "Check your internet and try again.");
+    }
+
+    // 2. save the report
+    const { error } = await supabase.from("incident_reports").insert({
       type,
       urgency,
       details: details.trim(),
-      date,
-      time,
+      incident_date: date.trim(),
+      incident_time: time.trim(),
       address: address.trim(),
       landmark: landmark.trim(),
       involved: involved.trim(),
-      photos,
-      reporter: anonymous ? null : { name: name.trim(), contact: contact.trim() },
-    };
+      photo_paths: uploaded,
+      reporter_name: anonymous ? null : name.trim(),
+      contact: anonymous ? null : contact.trim(),
+    });
+    setSending(false);
 
-    // TODO: send `payload` to your backend
-    console.log("Incident report:", payload);
+    if (error) {
+      // don't leave orphaned photos behind
+      if (uploaded.length) supabase.storage.from("incident-photos").remove(uploaded).catch(() => {});
+      return Alert.alert("Couldn't send the report", error.message);
+    }
 
     resetForm();
 
@@ -489,7 +527,11 @@ export default function IncidentReport() {
           </View>
 
           {/* Submit */}
-          <Pressable onPress={submit} style={{ borderRadius: 32, overflow: "hidden", marginTop: 4 }}>
+          <Pressable
+            onPress={submit}
+            disabled={sending}
+            style={{ borderRadius: 32, overflow: "hidden", marginTop: 4, opacity: sending ? 0.6 : 1 }}
+          >
             <LinearGradient
               colors={ORANGE}
               start={{ x: 0, y: 0 }}
@@ -503,7 +545,9 @@ export default function IncidentReport() {
               }}
             >
               <Ionicons name="send-outline" size={18} color={INK} />
-              <Text style={{ color: INK, fontSize: 16, fontFamily: "REM_BOLD" }}>Submit report</Text>
+              <Text style={{ color: INK, fontSize: 16, fontFamily: "REM_BOLD" }}>
+                {sending ? "Sending..." : "Submit report"}
+              </Text>
             </LinearGradient>
           </Pressable>
         </View>

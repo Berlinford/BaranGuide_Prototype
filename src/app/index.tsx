@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Modal, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import AnnouncementCard, { NewsCard, Post } from "../../components/AnnouncementCard";
 import { useAuth } from "../../context/AuthContext";
+import { useUnreadCount } from "../../lib/notifications";
 import { useCached } from "../../lib/offline";
 import { supabase } from "../../lib/supabase";
 
@@ -99,6 +100,7 @@ function Gradient({ children, style }: any) {
 export default function Home() {
   const router = useRouter();
   const { userId } = useAuth();
+  const unread = useUnreadCount(userId);
   const [showEvents, setShowEvents] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -238,11 +240,28 @@ export default function Home() {
             </Text>
             <View className="flex-row items-center" style={{ gap: 12 }}>
               <Ionicons name="notifications" size={24} color="#3B2300" />
-              <Pressable
-                onPress={() => router.navigate("/profile")}
-                className="bg-orange-700 w-9 h-9 rounded-full items-center justify-center"
-              >
-                <Text className="text-white" style={B}>{initials}</Text>
+              <Pressable onPress={() => router.navigate("/notifications")} hitSlop={10}>
+                <Ionicons name="notifications" size={24} color="#3B2300" />
+                {unread > 0 && (
+                  <View
+                    style={{
+                      position: "absolute",
+                      top: -4,
+                      right: -6,
+                      minWidth: 16,
+                      height: 16,
+                      borderRadius: 8,
+                      paddingHorizontal: 3,
+                      backgroundColor: "#D92D20",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <Text style={{ color: "#fff", fontSize: 10, fontFamily: "REM_BOLD" }}>
+                      {unread > 9 ? "9+" : unread}
+                    </Text>
+                  </View>
+                )}
               </Pressable>
             </View>
           </View>

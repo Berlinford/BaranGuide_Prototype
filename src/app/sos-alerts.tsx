@@ -112,25 +112,19 @@ export default function SosAlerts() {
         )
       : items.filter((i) => i.status === "Resolved");
 
-  const setStatus = async (s: Sos, to: "Responding" | "Resolved") => {
-    if (busyId) return;
-    setBusyId(s.id);
-    // only succeeds if nobody changed it in the meantime
-    const { data: updated, error } = await supabase
-      .from("sos_alerts")
-      .update({ status: to })
-      .eq("id", s.id)
-      .eq("status", s.status)
-      .select("id");
+  const setStatus = async (id: string | number, status: "Responding" | "Resolved") => {
+    setBusyId(String(id));
+    const { error } = await supabase.rpc("set_sos_status", {
+      target: String(id),
+      new_status: status,
+    });
     setBusyId(null);
 
     if (error) {
-      Alert.alert("Couldn't update", error.code ? error.message : "You need internet to update an alert.");
+      Alert.alert("Couldn't update", error.message);
       return;
     }
-    if (!updated || updated.length === 0) {
-      Alert.alert("Already updated", "Another official already changed this alert.");
-    }
+
     refresh();
   };
 
@@ -145,7 +139,7 @@ export default function SosAlerts() {
   const resolve = (s: Sos) =>
     Alert.alert("Mark as resolved?", `Close ${s.ref} for ${s.resident_name ?? "this resident"}?`, [
       { text: "Cancel", style: "cancel" },
-      { text: "Resolve", onPress: () => setStatus(s, "Resolved") },
+      { text: "Resolve", onPress: () => setStatus(s.id, "Resolved") },
     ]);
 
   return (
@@ -236,7 +230,7 @@ export default function SosAlerts() {
                       icon="walk-outline"
                       tone="danger"
                       disabled={busy}
-                      onPress={() => setStatus(s, "Responding")}
+                      onPress={() => setStatus(s.id, "Responding")}
                     />
                   ) : (
                     <ActionButton

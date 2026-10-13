@@ -1,8 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
-import { useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useFocusEffect, useRouter } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
+import { Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
+import { useAuth } from "../../context/AuthContext";
+import { useCached } from "../../lib/offline";
+import { supabase } from "../../lib/supabase";
 
 const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 const INK = "#3B2300";
@@ -37,60 +40,17 @@ const TYPE_ICON: Record<string, keyof typeof Ionicons.glyphMap> = {
   Other: "ellipsis-horizontal-circle-outline",
 };
 
-// TODO: replace with data from your backend
-const reports: {
-  id: number;
+type Report = {
+  id: string;
   ref: string;
   type: string;
   urgency: Urgency;
   address: string;
   details: string;
-  date: string;
   status: Status;
-}[] = [
-  {
-    id: 1,
-    ref: "IR-0042",
-    type: "Broken Streetlight",
-    urgency: "Medium",
-    address: "Mabini St., Purok 3",
-    details: "The streetlight in front of the basketball court has been out for a week. The road is very dark at night.",
-    date: "Oct 3, 2026",
-    status: "In progress",
-  },
-  {
-    id: 2,
-    ref: "IR-0037",
-    type: "Noise Complaint",
-    urgency: "Low",
-    address: "Rizal Ave., Purok 1",
-    details: "Loud karaoke past midnight on weekdays for the past few days.",
-    date: "Sep 28, 2026",
-    status: "Received",
-  },
-  {
-    id: 3,
-    ref: "IR-0029",
-    type: "Flooding",
-    urgency: "Urgent",
-    address: "Riverside Rd., Purok 5",
-    details: "Water is rising near the creek and entering the first floor of nearby houses.",
-    date: "Sep 12, 2026",
-    status: "Resolved",
-  },
-  {
-    id: 4,
-    ref: "IR-0018",
-    type: "Illegal Dumping",
-    urgency: "Low",
-    address: "Corner of Bonifacio St.",
-    details: "Garbage is being dumped beside the drainage canal.",
-    date: "Aug 30, 2026",
-    status: "Resolved",
-  },
-];
-
-type Report = (typeof reports)[number];
+  note: string;
+  created_at: string;
+};
 
 function Progress({ status }: { status: Status }) {
   const current = STATUSES.indexOf(status);
@@ -141,8 +101,13 @@ function Progress({ status }: { status: Status }) {
 
 function ReportCard({ r }: { r: Report }) {
   const [open, setOpen] = useState(false);
-  const chip = STATUS_STYLE[r.status];
-  const urg = URGENCY_STYLE[r.urgency];
+  const chip = STATUS_STYLE[r.status] ?? STATUS_STYLE.Received;
+  const urg = URGENCY_STYLE[r.urgency] ?? URGENCY_STYLE.Low;
+  const date = new Date(r.created_at).toLocaleDateString("en-PH", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 
   return (
     <Pressable
@@ -183,13 +148,21 @@ function ReportCard({ r }: { r: Report }) {
           <View style={{ backgroundColor: urg.bg, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 3 }}>
             <Text style={{ color: urg.text, fontSize: 11, fontFamily: "REM_BOLD" }}>{r.urgency}</Text>
           </View>
-          <Text style={{ marginLeft: "auto", color: MUTED, fontSize: 11, fontFamily: "REM_REGULAR" }}>{r.date}</Text>
+          <Text style={{ marginLeft: "auto", color: MUTED, fontSize: 11, fontFamily: "REM_REGULAR" }}>{date}</Text>
         </View>
 
         {/* Expanded details */}
         {open && (
           <View style={{ gap: 10, marginTop: 4, paddingTop: 10, borderTopWidth: 1, borderTopColor: "#F5E6BE" }}>
             <Text style={{ color: INK, fontSize: 12, lineHeight: 18, fontFamily: "REM_REGULAR" }}>{r.details}</Text>
+
+            {r.note.trim() ? (
+              <View style={{ backgroundColor: "#FFF1C7", borderRadius: 16, padding: 12, gap: 4 }}>
+                <Text style={{ color: MUTED, fontSize: 11, fontFamily: "REM_BOLD" }}>BARANGAY RESPONSE</Text>
+                <Text style={{ color: INK, fontSize: 12, lineHeight: 18, fontFamily: "REM_REGULAR" }}>{r.note}</Text>
+              </View>
+            ) : null}
+
             <Text style={{ color: MUTED, fontSize: 11, fontFamily: "REM_BOLD" }}>Ref: {r.ref}</Text>
             <View style={{ marginBottom: 20 }}>
               <Progress status={r.status} />
@@ -203,8 +176,52 @@ function ReportCard({ r }: { r: Report }) {
 
 export default function ReportsHistory() {
   const router = useRouter();
+  const { userId } = useAuth();
   const [filter, setFilter] = useState<"All" | Status>("All");
+  const [refreshing, setRefreshing] = useState(false);
 
+  const { data, loading, offline, refresh } = useCached<Report[]>(
+    userId ? `my-reports:${userId}` : null,
+    async () => {
+      const { data, error } = await supabase
+        .from("incident_reports")
+        .select("id, ref, type, urgency, address, details, status, note, created_at")
+        .eq("user_id", userId!)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Report[];
+    }
+  );
+
+  // live updates: when an official changes a report, it updates right away
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`my-reports:${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "incident_reports", filter: `user_id=eq.${userId}` },
+        () => refresh()
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId, refresh]);
+
+  useFocusEffect(
+    useCallback(() => {
+      refresh();
+    }, [refresh])
+  );
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refresh();
+    setRefreshing(false);
+  };
+
+  const reports = data ?? [];
   const filters: ("All" | Status)[] = ["All", ...STATUSES];
   const count = (f: "All" | Status) => (f === "All" ? reports.length : reports.filter((r) => r.status === f).length);
   const shown = filter === "All" ? reports : reports.filter((r) => r.status === filter);
@@ -214,6 +231,7 @@ export default function ReportsHistory() {
       style={{ flex: 1, backgroundColor: "#FFF1C7" }}
       contentContainerStyle={{ paddingBottom: 130 }}
       showsVerticalScrollIndicator={false}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
       {/* Header (same style as Home / Requests) */}
       <View
@@ -298,9 +316,29 @@ export default function ReportsHistory() {
         })}
       </ScrollView>
 
+      {offline && (
+        <Text
+          style={{
+            color: "#7A3E00",
+            backgroundColor: "#FFD9A8",
+            borderRadius: 16,
+            padding: 8,
+            marginHorizontal: 20,
+            marginTop: 12,
+            textAlign: "center",
+            fontSize: 11,
+            fontFamily: "REM_BOLD",
+          }}
+        >
+          Couldn't reach the server. Showing saved data.
+        </Text>
+      )}
+
       {/* List */}
       <View style={{ paddingHorizontal: 20, paddingTop: 16, gap: 12 }}>
-        {shown.length === 0 ? (
+        {loading ? (
+          <Text style={{ color: INK, textAlign: "center", fontFamily: "REM_REGULAR" }}>Loading...</Text>
+        ) : shown.length === 0 ? (
           <View style={{ alignItems: "center", paddingVertical: 40 }}>
             <Ionicons name="shield-checkmark-outline" size={48} color="#8A6A3A" />
             <Text style={{ color: INK, marginTop: 8, fontFamily: "REM_BOLD" }}>
