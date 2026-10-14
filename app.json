@@ -20,6 +20,8 @@
     },
     "android": {
       "package": "com.lafirma.baranguide",
+      "googleServicesFile": "./google-services.json",
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION", "CAMERA"],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/BaranGuideIcon.png",
@@ -33,13 +35,16 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/BaranGuideIcon.png",
           "imageWidth": 76
         }
       ],
       "expo-font",
-      "expo-secure-store"
+      "expo-secure-store",
+      ["expo-location", { "locationAlwaysAndWhenInUsePermission": "BaranGuide uses your location to send SOS alerts." }],
+      ["expo-image-picker", { "photosPermission": "Allow BaranGuide to access your photos.", "cameraPermission": "Allow BaranGuide to use your camera." }],
+      ["expo-notifications", { "color": "#D92D20" }]
     ],
     "experiments": {
       "typedRoutes": true,

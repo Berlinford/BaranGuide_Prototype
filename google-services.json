@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "724938396124",
+    "project_id": "baranguide-beta",
+    "storage_bucket": "baranguide-beta.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:724938396124:android:9e3eacf2c0478398a1bf19",
+        "android_client_info": {
+          "package_name": "con.lafirma.baranguide"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCnJA4TEfAPWMnVHXZj7pchjihW28BKUsM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
