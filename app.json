@@ -44,7 +44,8 @@
       "expo-secure-store",
       ["expo-location", { "locationAlwaysAndWhenInUsePermission": "BaranGuide uses your location to send SOS alerts." }],
       ["expo-image-picker", { "photosPermission": "Allow BaranGuide to access your photos.", "cameraPermission": "Allow BaranGuide to use your camera." }],
-      ["expo-notifications", { "color": "#D92D20" }]
+      ["expo-notifications", { "color": "#D92D20",
+        "sounds": ["./assets/sounds/sos_alert.mp3", "./assets/sounds/notification.mp3"] }]
     ],
     "experiments": {
       "typedRoutes": true,
