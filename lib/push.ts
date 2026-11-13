@@ -13,8 +13,8 @@ Notifications.setNotificationHandler({
   }),
 });
 
-export const SOS_CHANNEL = "sos-alerts-v2"; // new ID: an existing channel's sound can't be changed
-export const GENERAL_CHANNEL = "general";
+  export const SOS_CHANNEL = "sos-alerts-v4";
+  export const GENERAL_CHANNEL = "general-v2";
 
 async function setupChannel() {
   if (Platform.OS !== "android") return;

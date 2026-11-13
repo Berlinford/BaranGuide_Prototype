@@ -10,15 +10,15 @@ Deno.serve(async (req) => {
     .from("push_tokens").select("token").eq("user_id", record.user_id);
   if (!tokens?.length) return new Response("no tokens");
 
-  const isSos = record.type === "sos";
+  const isSos = record.type.startsWith("sos");
   const messages = tokens.map((t) => ({
     to: t.token,
     title: record.title,
     body: record.body,
     data: { type: record.type, route: record.route },
     priority: "high",
-    channelId: isSos ? "sos-alerts-v2" : "general",
-    sound: isSos ? "sos_alert.mp3" : "notification.mp3",
+    channelId: isSos ? "sos-alerts-v4" : "general-v2",
+    sound: isSos ? "sos_alert.wav" : "notification.wav",
   }));
 
   const res = await fetch("https://exp.host/--/api/v2/push/send", {
