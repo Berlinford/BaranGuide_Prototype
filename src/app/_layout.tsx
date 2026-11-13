@@ -5,6 +5,7 @@ import { Tabs, useRouter } from "expo-router";
 import { ComponentProps, useEffect } from "react";
 import { ColorValue, StyleSheet } from "react-native";
 import { AuthProvider, useAuth } from "../../context/AuthContext";
+import PushSetup from "../../context/PushSetup";
 import { startSync } from "../../lib/offline";
 
 import "./global.css";
@@ -131,6 +132,7 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <AuthProvider>
+      <PushSetup />
       <RootNavigator />
     </AuthProvider>
   );

@@ -4,6 +4,15 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
 
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 export const SOS_CHANNEL = "sos-alerts-v2"; // new ID: an existing channel's sound can't be changed
 export const GENERAL_CHANNEL = "general";
 
@@ -51,7 +60,11 @@ export async function registerForPush(): Promise<"ok" | "denied" | "unsupported"
 
   try {
     const token = await getToken();
-    await supabase.rpc("save_push_token", { p_token: token });
+     const { error } = await supabase.rpc("save_push_token", { p_token: token });
+    if (error) {
+      console.log("save_push_token error:", error.message);
+      return "unsupported";
+    }
     return "ok";
   } catch (e) {
     console.log("push register error:", e);

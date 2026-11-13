@@ -18,7 +18,7 @@ Deno.serve(async (req) => {
     data: { type: record.type, route: record.route },
     priority: "high",
     channelId: isSos ? "sos-alerts-v2" : "general",
-    sound: isSos ? "sos_alert.wav" : "notify.wav",
+    sound: isSos ? "sos_alert.mp3" : "notification.mp3",
   }));
 
   const res = await fetch("https://exp.host/--/api/v2/push/send", {

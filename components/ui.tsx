@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { ReactNode } from "react";
-import { Modal, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { Modal, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from "react-native";
 
 export const ORANGE = ["#FFD966", "#FF9A4D"] as const;
 export const DARK = ["#4A2C05", "#2B1A02"] as const; // officials' header + tab bar
@@ -136,16 +136,25 @@ export function Page({
   backTo,
   right,
   children,
+  refreshing,
+  onRefresh,
 }: {
   title: string;
   variant?: Variant;
   backTo?: string | null;
   right?: ReactNode;
   children: ReactNode;
+  refreshing?: boolean;
+  onRefresh?: () => void;
 }) {
   return (
     <ScrollView
       style={{ flex: 1, backgroundColor: CREAM }}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} />
+        ) : undefined
+      }
       contentContainerStyle={{ paddingBottom: 130 }}
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
