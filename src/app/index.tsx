@@ -34,7 +34,14 @@ function ActiveRequestCard({ r, onPress }: { r: NonNullable<ActiveRequest>; onPr
   const color = rejected ? "#7A1F00" : ready ? "#14532D" : "#3B2300";
 
   const content = (
-    <View style={{ gap: 6 }}>
+    <View style={{ gap: 4 }}>
+      <Ionicons
+        name="folder-open"
+        size={84}
+        color={ready ? "#14532D" : "#3B2300"}
+        style={{ position: "absolute", right: -4, bottom: -8, opacity: 0.9 }}
+      />
+
       <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
         <Text style={{ color: "#3B2300", fontSize: 15, fontFamily: "REM_BOLD" }}>
           {finished ? "Your Latest Request" : "Your Active Request"}
@@ -56,18 +63,18 @@ function ActiveRequestCard({ r, onPress }: { r: NonNullable<ActiveRequest>; onPr
         </View>
       </View>
 
-      <Text style={{ color: "#3B2300", fontSize: 14, fontFamily: "REM_REGULAR" }}>{r.doc_type}</Text>
-      <Text style={{ color, fontSize: 11, fontFamily: "REM_REGULAR" }}>
+      <Text style={{ color: "#3B2300", fontSize: 15, fontFamily: "REM_BOLD", marginTop: 10 }}>{r.doc_type}</Text>
+      <Text style={{ color, fontSize: 11, fontFamily: "REM_REGULAR", maxWidth: "70%" }}>
         {r.ref} · {STATUS_TEXT[r.status] ?? r.status}
       </Text>
 
       {!rejected && (
-        <View style={{ backgroundColor: "rgba(255,255,255,0.5)", height: 8, borderRadius: 4, marginTop: 6 }}>
+        <View style={{ backgroundColor: "rgba(255,255,255,0.5)", height: 12, borderRadius: 6, marginTop: 8 }}>
           <View
             style={{
-              backgroundColor: ready ? "#4CAF6A" : "#C2410C",
-              height: 8,
-              borderRadius: 4,
+              backgroundColor: ready ? "#4CAF6A" : "#FF9F0A",
+              height: 12,
+              borderRadius: 6,
               width: (PROGRESS[r.status] ?? "33%") as any,
             }}
           />
@@ -79,11 +86,13 @@ function ActiveRequestCard({ r, onPress }: { r: NonNullable<ActiveRequest>; onPr
   return (
     <Pressable onPress={onPress}>
       {finished ? (
-        <View style={{ borderRadius: 16, padding: 16, backgroundColor: ready ? "#CDEFD3" : "#FDE2E0" }}>
+        <View
+          style={{ borderRadius: 24, padding: 16, overflow: "hidden", backgroundColor: ready ? "#CDEFD3" : "#FDE2E0" }}
+        >
           {content}
         </View>
       ) : (
-        <Gradient style={{ borderRadius: 16, padding: 16 }}>{content}</Gradient>
+        <Gradient style={{ borderRadius: 24, padding: 16, overflow: "hidden" }}>{content}</Gradient>
       )}
     </Pressable>
   );
@@ -97,12 +106,83 @@ function Gradient({ children, style }: any) {
   );
 }
 
+/** ENG / FIL pill. Only switches the highlighted side for now. */
+function LangToggle({ value, onChange }: { value: "ENG" | "FIL"; onChange: (v: "ENG" | "FIL") => void }) {
+  return (
+    <View
+      style={{
+        flexDirection: "row",
+        alignSelf: "flex-start",
+        backgroundColor: "rgba(255,140,75,0.55)",
+        borderRadius: 14,
+        padding: 2,
+      }}
+    >
+      {(["ENG", "FIL"] as const).map((l) => (
+        <Pressable
+          key={l}
+          onPress={() => onChange(l)}
+          style={{
+            paddingHorizontal: 14,
+            paddingVertical: 3,
+            borderRadius: 12,
+            backgroundColor: value === l ? "#fff" : "transparent",
+          }}
+        >
+          <Text style={{ color: "#3B2300", fontSize: 11, fontFamily: "REM_BOLD" }}>{l}</Text>
+        </Pressable>
+      ))}
+    </View>
+  );
+}
+
+/** Sun + barangay hall. Replace the contents with <Image source={require("...")} /> when you have the artwork. */
+function HeaderArt() {
+  return (
+    <>
+      <View
+        style={{
+          position: "absolute",
+          right: 96,
+          top: 58,
+          width: 58,
+          height: 58,
+          borderRadius: 29,
+          backgroundColor: "rgba(255,255,255,0.55)",
+        }}
+      />
+      <Ionicons name="business" size={130} color="#E8912A" style={{ position: "absolute", right: -8, bottom: -12 }} />
+    </>
+  );
+}
+
+/** Big tappable tile with an oversized icon cropped at the corner. */
+function ActionCard({
+  title,
+  icon,
+  onPress,
+}: {
+  title: string;
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  onPress: () => void;
+}) {
+  return (
+    <Pressable style={{ flex: 1 }} onPress={onPress}>
+      <Gradient style={{ borderRadius: 24, padding: 16, height: 100, justifyContent: "flex-end", overflow: "hidden" }}>
+        <Ionicons name={icon} size={92} color="#3B2300" style={{ position: "absolute", right: -10, top: 4 }} />
+        <Text style={{ color: "#3B2300", fontSize: 15, fontFamily: "REM_BOLD", maxWidth: "62%" }}>{title}</Text>
+      </Gradient>
+    </Pressable>
+  );
+}
+
 export default function Home() {
   const router = useRouter();
   const { userId } = useAuth();
   const unread = useUnreadCount(userId);
   const [showEvents, setShowEvents] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [lang, setLang] = useState<"ENG" | "FIL">("ENG");
 
   const posts = useCached<Post[]>("announcements", async () => {
     const { data, error } = await supabase
@@ -199,6 +279,7 @@ export default function Home() {
       showsVerticalScrollIndicator={false}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
     >
+      {/* ---------- HEADER ---------- */}
       <View
         style={{
           borderBottomLeftRadius: 24,
@@ -224,66 +305,62 @@ export default function Home() {
           style={{
             paddingTop: 48,
             paddingHorizontal: 16,
-            paddingBottom: 20,
+            paddingBottom: 24,
+            minHeight: 170,
             borderBottomLeftRadius: 24,
             borderBottomRightRadius: 24,
             overflow: "hidden",
           }}
         >
-          <View className="flex-row justify-between items-center">
-            <Text className="text-ink" style={R}>Welcome</Text>
-          </View>
+          {/* Artwork (swap these for real images later, see HeaderArt) */}
+          <HeaderArt />
 
-          <View className="flex-row justify-between items-center" style={{ paddingRight: 20 }}>
-            <Text className="text-ink text-2xl" style={[B, { flex: 1 }]} numberOfLines={1}>
-              {fullName}!
-            </Text>
-            <View className="flex-row items-center" style={{ gap: 12 }}>
-              <Ionicons name="notifications" size={24} color="#3B2300" />
-              <Pressable onPress={() => router.navigate("/notifications")} hitSlop={10}>
-                <Ionicons name="notifications" size={24} color="#3B2300" />
-                {unread > 0 && (
-                  <View
-                    style={{
-                      position: "absolute",
-                      top: -4,
-                      right: -6,
-                      minWidth: 16,
-                      height: 16,
-                      borderRadius: 8,
-                      paddingHorizontal: 3,
-                      backgroundColor: "#D92D20",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <Text style={{ color: "#fff", fontSize: 10, fontFamily: "REM_BOLD" }}>
-                      {unread > 9 ? "9+" : unread}
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
-            </View>
-          </View>
+          {/* Notifications bell with unread badge */}
+          <Pressable
+            onPress={() => router.navigate("/notifications")}
+            hitSlop={10}
+            style={{ position: "absolute", top: 48, right: 16 }}
+          >
+            <Ionicons name="notifications" size={26} color="#3B2300" />
+            {unread > 0 && (
+              <View
+                style={{
+                  position: "absolute",
+                  top: -4,
+                  right: -6,
+                  minWidth: 16,
+                  height: 16,
+                  borderRadius: 8,
+                  paddingHorizontal: 3,
+                  backgroundColor: "#D92D20",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <Text style={{ color: "#fff", fontSize: 10, fontFamily: "REM_BOLD" }}>
+                  {unread > 9 ? "9+" : unread}
+                </Text>
+              </View>
+            )}
+          </Pressable>
 
-          <Text className="text-ink text-xs" style={R}>Barangay Bagong Anyo, Liliw, Laguna</Text>
+          <LangToggle value={lang} onChange={setLang} />
+
+          <Text style={[R, { color: "#3B2300", fontSize: 15, marginTop: 14 }]}>Welcome</Text>
+          <Text style={[B, { color: "#3B2300", fontSize: 28, maxWidth: "62%" }]} numberOfLines={1}>
+            {fullName}!
+          </Text>
+          <Text style={[R, { color: "#3B2300", fontSize: 11, maxWidth: "48%", marginTop: 2 }]}>
+            Barangay Bagong Anyo, Liliw, Laguna
+          </Text>
         </Gradient>
       </View>
 
+      {/* ---------- ACTIONS ---------- */}
       <View className="px-4 mt-4" style={{ gap: 12 }}>
         <View className="flex-row" style={{ gap: 12 }}>
-          <Pressable className="flex-1" onPress={() => router.push("/document-request")}>
-            <Gradient style={{ borderRadius: 16, padding: 16, minHeight: 90, justifyContent: "flex-end" }}>
-              <Ionicons name="document-text-outline" size={24} color="#3B2300" />
-              <Text className="text-ink mt-1" style={B}>Document Request</Text>
-            </Gradient>
-          </Pressable>
-          <Pressable className="flex-1" onPress={() => router.push("/report-incident")}>
-            <Gradient style={{ borderRadius: 16, padding: 16, minHeight: 90, justifyContent: "flex-end" }}>
-              <Ionicons name="megaphone-outline" size={24} color="#3B2300" />
-              <Text className="text-ink mt-1" style={B}>Report Incident</Text>
-            </Gradient>
-          </Pressable>
+          <ActionCard title={"Document\nRequest"} icon="document-text" onPress={() => router.push("/document-request")} />
+          <ActionCard title={"Report\nIncident"} icon="megaphone" onPress={() => router.push("/report-incident")} />
         </View>
 
         <Pressable onPress={() => router.push("/sos")}>
@@ -291,13 +368,23 @@ export default function Home() {
             colors={RED}
             start={{ x: 0.5, y: 0 }}
             end={{ x: 0.5, y: 1 }}
-            style={{ borderRadius: 16, padding: 16, flexDirection: "row", alignItems: "center", gap: 12 }}
+            style={{ borderRadius: 24, padding: 16, height: 110, justifyContent: "flex-end", overflow: "hidden" }}
           >
-            <Ionicons name="warning" size={28} color="white" />
-            <View>
-              <Text className="text-white text-lg" style={B}>Emergency SOS</Text>
-              <Text className="text-white text-xs" style={R}>Hold 3 seconds to send</Text>
-            </View>
+            <Ionicons name="wifi" size={62} color="#fff" style={{ position: "absolute", right: 46, top: 4 }} />
+            <Text
+              style={{
+                position: "absolute",
+                right: 14,
+                bottom: -4,
+                color: "#fff",
+                fontSize: 66,
+                lineHeight: 76,
+                fontFamily: "REM_BOLD",
+              }}
+            >
+              SOS
+            </Text>
+            <Text style={[B, { color: "#fff", fontSize: 15 }]}>{"Emergency\nSOS"}</Text>
           </LinearGradient>
         </Pressable>
 
